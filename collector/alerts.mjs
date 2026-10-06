@@ -47,8 +47,24 @@ function messenger(name, base, token, chatId) {
     } };
 }
 
+/** When no chat id is configured, use the most recent private chat that messaged the bot (never logged). */
+async function discoverChatId(base, token) {
+  if (!token) return null;
+  try {
+    const r = await fetch(`${base}/bot${token}/getUpdates`);
+    const j = await r.json();
+    const chats = (j.result || []).map((u) => (u.message || u.edited_message || {}).chat).filter((c) => c && c.type === 'private');
+    return chats.length ? String(chats[chats.length - 1].id) : null;
+  } catch { return null; }
+}
+
 /** Sends alerts through Bale -> Telegram failover. Returns updated `sent` map. Never throws. */
 export async function deliver(alerts, sent, env, log) {
+  if (!alerts.length) return { sent, health: [] };
+  env = { ...env };
+  if (env.BALE_BOT_TOKEN && !env.BALE_CHAT_ID) env.BALE_CHAT_ID = await discoverChatId('https://tapi.bale.ai', env.BALE_BOT_TOKEN);
+  if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_CHAT_ID) env.TELEGRAM_CHAT_ID = await discoverChatId('https://api.telegram.org', env.TELEGRAM_BOT_TOKEN);
+  if (env.BALE_BOT_TOKEN && !env.BALE_CHAT_ID) log('warn', 'Bale: chat id not found - send any message to the bot first');
   const providers = [
     messenger('Bale', 'https://tapi.bale.ai', env.BALE_BOT_TOKEN, env.BALE_CHAT_ID),
     messenger('Telegram', 'https://api.telegram.org', env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID),
