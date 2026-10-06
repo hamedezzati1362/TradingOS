@@ -3,7 +3,12 @@ import { zonedParts, serverParts, zoneOffsetMinutes, serverOffsetMinutes, zonedT
 import { sessionStates, timelineIntervals } from './engines/session-engine.js';
 import { t, getLang, setLang } from './i18n.js';
 import { computeCondition, scoreSession } from './core/condition-engine.js';
-import { DEMO_ASSETS, DEMO_FACTORS, DEMO_EVENTS, DEMO_DRIVERS } from './demo-data.js';
+import { DEMO_EVENTS, DEMO_DRIVERS } from './demo-data.js';
+import { scoreVolatility } from './core/condition-engine.js';
+import { loadSnapshot, displayStatus, fmtAge } from './data-client.js';
+
+let SNAP = null, SNAP_ERR = 'loading';
+const dstatus = (a, now = Date.now()) => displayStatus(a && a.status, a && a.fetchedAt, now, CONFIG.data);
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -41,9 +46,22 @@ function gaugeSvg(v) {
   </svg>`;
 }
 
+function assetFactors(a, now) {
+  const st = dstatus(a, now);
+  if (!a || st === 'UNAVAILABLE' || st === 'STALE') return {};
+  const vol = scoreVolatility(a.atrPct);
+  return {
+    volatility: { value: vol.value, status: st, note: `${a.volatility || ''} volatility (ATR p${a.atrPct})` },
+    momentum: { value: a.momentum, status: st, note: `Momentum ${a.momentum}` },
+    structure: { value: a.structureScore, status: st, note: `Structure ${a.structure}` },
+    regime: { value: a.regimeScore, status: st, note: `Regime ${a.regime}` },
+  };
+}
+
 function renderCondition(ss) {
   const sess = scoreSession(ss);
-  const factors = { ...DEMO_FACTORS, session: { value: sess.value, status: 'LIVE', note: sess.note } };
+  const now = Date.now();
+  const factors = { session: { value: sess.value, status: 'LIVE', note: sess.note }, ...assetFactors(SNAP && SNAP.assets[CONFIG.data.primaryAsset], now) };
   const r = computeCondition(factors, CONFIG.conditionWeights, CONFIG.conditionBands,
     { minCoverage: CONFIG.minCoverage, vetoes: CONFIG.conditionVetoes });
   const v = r.score ?? 0;
@@ -57,7 +75,7 @@ function renderCondition(ss) {
         <span class="track"><span class="fill" style="width:${b.value ?? 0}%;background:${b.value == null ? 'transparent' : scoreColor(b.value)}"></span></span><span class="v">${b.value ?? '--'}</span></div>`).join('')}</div>
     </div>
     <div class="why"><b>${t('why')}</b>${r.plus.map((x) => `<span class="p">+ ${esc(x)}</span>`).join('')}${r.minus.map((x) => `<span class="m">− ${esc(x)}</span>`).join('')}</div>
-    <p class="demo-note"><i class="sd live"></i>LIVE &nbsp;<i class="sd demo"></i>DEMO &nbsp;· ${t('coverage')} ${Math.round(r.coverage * 100)}% · ${esc(t('demoNote'))}</p>`;
+    <p class="demo-note" style="color:var(--ink-3)">${CONFIG.data.primaryAsset} · ${t('coverage')} ${Math.round(r.coverage * 100)}%${r.missing.length ? ` · ${t('noData')}: ${r.missing.map((k) => t(k)).join(', ')}` : ''}</p>`;
 }
 
 function renderSessions(ss, now) {
@@ -85,19 +103,35 @@ function sparkSvg(pts, dir) {
 }
 
 function renderAssets() {
-  $('assets').innerHTML = DEMO_ASSETS.map((a) => {
-    const cls = a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : 'flat';
-    const tr = a.trend > 0 ? '▲ BULLISH' : a.trend < 0 ? '▼ BEARISH' : '◆ NEUTRAL';
-    return `<article class="card asset"><div class="row1"><span class="sym">${a.sym}</span>${pill('demo', t('demo'))}</div>
-      <div class="px num">${a.price.toFixed(a.dp)}</div><div class="chg ${cls} num">${a.chg > 0 ? '▲ +' : a.chg < 0 ? '▼ ' : ''}${a.chg.toFixed(2)}%</div>
-      ${sparkSvg(a.spark, a.trend)}
-      <div class="kv"><span class="k">${t('trend')}</span><span class="v ${a.trend > 0 ? 'up' : a.trend < 0 ? 'down' : 'flat'}">${tr}</span>
+  const now = Date.now();
+  $('assets').innerHTML = CONFIG.assets.map((sym) => {
+    const a = SNAP && SNAP.assets[sym];
+    const st = dstatus(a, now);
+    const dp = (CONFIG.assetMeta[sym] || {}).dp ?? 2;
+    const head = `<div class="row1"><span class="sym">${sym}</span>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>`;
+    if (!a || a.price == null) return `<article class="card asset">${head}<div class="px num" style="color:var(--ink-3)">--</div><p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p></article>`;
+    const cls = a.changePct > 0 ? 'up' : a.changePct < 0 ? 'down' : 'flat';
+    const tr = a.bias > 0 ? '▲ BULLISH' : a.bias < 0 ? '▼ BEARISH' : '◆ NEUTRAL';
+    const cond = assetCondition(a, now);
+    return `<article class="card asset">${head}
+      <div class="px num">${a.price.toFixed(dp)}</div><div class="chg ${cls} num">${a.changePct > 0 ? '▲ +' : a.changePct < 0 ? '▼ ' : ''}${a.changePct == null ? '--' : a.changePct.toFixed(2)}% <span style="color:var(--ink-3)">24h</span></div>
+      ${a.spark && a.spark.length > 2 ? sparkSvg(a.spark, a.bias) : ''}
+      <div class="kv"><span class="k">${t('trend')}</span><span class="v ${a.bias > 0 ? 'up' : a.bias < 0 ? 'down' : 'flat'}">${tr}</span>
         <span class="k">${t('structure')}</span><span class="v">${esc(a.structure)}</span>
-        <span class="k">${t('momentum')}</span><span class="meter"><i style="width:${a.momentum}%"></i></span>
-        <span class="k">${t('volatility')}</span><span class="meter"><i style="width:${a.volatility}%;background:var(--warn)"></i></span>
-        <span class="k">${t('regime')}</span><span class="v">${esc(a.regime)}</span></div>
-      <div class="cond"><span class="k" style="font-size:11px;color:var(--ink-3)">${t('condition')}</span><span class="score num" style="color:${scoreColor(a.condition)}">${a.condition}</span></div></article>`;
+        <span class="k">${t('momentum')}</span><span class="meter" title="${a.momentum}"><i style="width:${a.momentum ?? 0}%"></i></span>
+        <span class="k">${t('volatility')}</span><span class="meter" title="ATR p${a.atrPct}"><i style="width:${a.atrPct ?? 0}%;background:var(--warn)"></i></span>
+        <span class="k">${t('regime')}</span><span class="v">${esc(a.regime)}</span>
+        <span class="k">RSI</span><span class="v">${a.rsi ?? '--'}</span></div>
+      <div class="cond"><span class="k" style="font-size:11px;color:var(--ink-3)">${t('condition')}</span><span class="score num" style="color:${cond == null ? 'var(--ink-3)' : scoreColor(cond)}">${cond ?? '--'}</span></div>
+      <div class="src mono">${esc(a.source)} · ${fmtAge(now - a.fetchedAt)}${a.proxy ? ` · ${esc(a.proxy)}` : ''}</div></article>`;
   }).join('');
+}
+
+let LAST_SS = null;
+function assetCondition(a, now) {
+  if (!LAST_SS) return null;
+  const s = scoreSession(LAST_SS);
+  return computeCondition({ session: { value: s.value, status: 'LIVE' }, ...assetFactors(a, now) }, CONFIG.conditionWeights, CONFIG.conditionBands, { minCoverage: CONFIG.minCoverage }).score;
 }
 
 function renderTimeline(now) {
@@ -129,19 +163,33 @@ function renderEvents() {
 }
 
 function renderHealth() {
-  const online = navigator.onLine;
+  const online = navigator.onLine, now = Date.now();
+  const age = SNAP ? now - SNAP.generatedAt : null;
+  const priceSt = !SNAP ? 'UNAVAILABLE' : age > CONFIG.data.staleAfterMs ? 'STALE' : age > CONFIG.data.liveMaxAgeMs ? 'CACHE'
+    : Object.values(SNAP.assets).some((x) => x.status === 'LIVE') ? 'LIVE' : Object.values(SNAP.assets).some((x) => x.status === 'FALLBACK') ? 'FALLBACK' : 'CACHE';
+  const prov = SNAP && SNAP.health && SNAP.health.price ? SNAP.health.price : [];
   const cells = [
     [t('timeEngine'), pill('live', t('live')), 'Intl / IANA · ' + t('local')],
-    [t('price'), pill('demo', t('demo')), t('notConfigured')],
+    [t('price'), pill(priceSt.toLowerCase(), t(priceSt.toLowerCase())), SNAP ? `${t('age')} ${fmtAge(age)}` : (SNAP_ERR || '')],
     [t('newsTab'), pill('demo', t('demo')), t('notConfigured')],
     [t('calendar'), pill('demo', t('demo')), t('notConfigured')],
-    [t('volatility'), pill('demo', t('demo')), t('notConfigured')],
+    [t('volatility'), pill(priceSt.toLowerCase(), t(priceSt.toLowerCase())), 'ATR · 15m'],
     ['NETWORK', online ? pill('live', t('online')) : pill('offline', t('offline')), online ? 'navigator.onLine' : 'cached shell'],
   ];
   $('health').innerHTML = `<div class="card-h"><h2>${t('dataHealth')}</h2></div>
-    <div class="health-grid">${cells.map(([k, p, d]) => `<div class="hcell"><div class="k">${esc(k)}</div>${p}<div class="d">${esc(d)}</div></div>`).join('')}</div>`;
+    <div class="health-grid">${cells.map(([k, p, d]) => `<div class="hcell"><div class="k">${esc(k)}</div>${p}<div class="d">${esc(d)}</div></div>`).join('')}</div>
+    ${prov.length ? `<div class="prov"><div class="k">PRICE PROVIDERS</div>${prov.map((p) => `<div class="prow mono"><span>${p.priority}. ${esc(p.name)}</span>
+      ${pill(p.circuit === 'OPEN' ? 'down' : p.status === 'LIVE' ? 'live' : p.status === 'DOWN' ? 'down' : 'muted', p.circuit === 'OPEN' ? 'CIRCUIT OPEN' : p.status)}
+      <span>${p.latencyMs != null ? p.latencyMs + 'ms' : '--'}</span><span>${t('fails')} ${p.failures}</span><span>${p.score ?? '--'}</span>
+      <span class="err">${esc(p.lastError || '')}</span></div>`).join('')}</div>` : ''}`;
   $('net-pill').className = `pill ${online ? 'live' : 'offline'}`;
   $('net-pill').textContent = `${t('system')} ${online ? t('online') : t('offline')}`;
+}
+
+async function refreshData() {
+  const r = await loadSnapshot(CONFIG.data.snapshotUrl);
+  if (r.ok) { SNAP = r.snap; SNAP_ERR = null; } else SNAP_ERR = r.error;   // keep the previous snapshot (its age keeps growing)
+  safe('assets', renderAssets); safe('health', renderHealth); lastMinute = -1; tick();
 }
 
 function staticText() {
@@ -154,7 +202,7 @@ function tick() {
   const now = new Date();
   let ss = null;
   safe('clocks', () => renderClocks(now));
-  safe('sessions', () => { ss = sessionStates(now, CONFIG); renderSessions(ss, now); });
+  safe('sessions', () => { ss = sessionStates(now, CONFIG); LAST_SS = ss; renderSessions(ss, now); });
   const m = Math.floor(now.getTime() / 60000);
   if (m !== lastMinute && ss) { lastMinute = m; safe('condition', () => renderCondition(ss)); safe('timeline', () => renderTimeline(now)); }
 }
@@ -182,6 +230,9 @@ window.addEventListener('offline', () => safe('health', renderHealth));
 setupTabs();
 renderAll();
 setInterval(tick, 1000);
+refreshData();
+setInterval(refreshData, CONFIG.data.refreshMs);
+setInterval(() => { safe('assets', renderAssets); safe('health', renderHealth); }, 30000);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[sw]', e));

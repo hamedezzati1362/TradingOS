@@ -117,7 +117,7 @@ export class ProviderManager {
           const entry = { data: value, source: p.name, fetchedAt: this.now() };
           this.cache.set(key, entry);
           attempts.push({ provider: p.name, result: 'ok', latencyMs: latency });
-          const status = i === 0 ? STATUS.LIVE : STATUS.FALLBACK;
+          const status = (p.priority ?? i + 1) === 1 ? STATUS.LIVE : STATUS.FALLBACK;   // only the primary provider counts as LIVE
           this._log('info', `${key}: ${p.name} selected (${status}, ${latency}ms)`);
           this._markStandby(p);
           return { key, data: value, status, source: p.name, ageMs: 0, fetchedAt: entry.fetchedAt, attempts };

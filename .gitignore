@@ -3,3 +3,4 @@ dist/
 storage/*
 !storage/.gitkeep
 .env
+public/data/

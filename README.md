@@ -8,4 +8,4 @@ Live site: https://hamedezzati1362.github.io/tradingos/
 - `node tests/ui.check.mjs <url> <dir>` — responsive/console/offline checks (needs Playwright)
 - Architecture: `docs/ARCHITECTURE_FA.md`
 
-Status: Phase 1–5 done. Clocks, sessions, timeline and the session factor are LIVE; market panels are DEMO until data providers are connected (Phase 6).
+Status: Phase 1–6. Prices, structure, regime, volatility and momentum are real (15-min data via GitHub Actions). News, calendar and macro drivers are DEMO until Phase 7–9.

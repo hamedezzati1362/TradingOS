@@ -181,3 +181,9 @@ button { font: inherit; color: inherit; }
 .sd { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-inline-end: 6px; vertical-align: middle; background: var(--ink-3); }
 .sd.live { background: var(--up); } .sd.fallback, .sd.cache { background: var(--warn); } .sd.stale, .sd.unavailable { background: var(--bad); } .sd.demo { background: var(--demo); }
 .pill.unavailable { color: var(--bad); }
+.asset .src { margin-top: 8px; font-size: 10px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prov { margin-top: 12px; display: grid; gap: 6px; }
+.prov .k { font: 600 10px var(--sans); letter-spacing: 1.2px; color: var(--ink-3); }
+.prow { display: grid; grid-template-columns: 120px auto 70px 70px 40px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 11px; color: var(--ink-2); }
+.prow .err { color: var(--bad); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) { .prow { grid-template-columns: 1fr auto; } .prow > span:nth-child(n+3) { display: none; } .prow .err { display: block; grid-column: 1 / -1; } }

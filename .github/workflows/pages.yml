@@ -1,7 +1,9 @@
-name: Test and deploy to GitHub Pages
+name: Test, collect data and deploy
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '*/15 * * * *'     # data refresh (GitHub may delay scheduled runs by several minutes)
   workflow_dispatch:
 permissions:
   contents: read
@@ -9,7 +11,7 @@ permissions:
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,11 +23,20 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Collect market data
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        # The collector never fails the deploy: on total failure it falls back to the last published snapshot.
+        run: node collector/collect.mjs public/data/snapshot.json https://hamedezzati1362.github.io/TradingOS/data/snapshot.json || echo "collector failed; deploying without fresh data"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: public }

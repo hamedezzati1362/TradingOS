@@ -23,4 +23,12 @@ export const CONFIG = {
   conditionBands: { noTrade: [0, 49], caution: [50, 74], favorable: [75, 100] },
   assets: ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'BRENT'],
   timelineTz: 'Asia/Tehran',
+  data: {
+    snapshotUrl: 'data/snapshot.json',
+    refreshMs: 60000,
+    liveMaxAgeMs: 25 * 60000,   // collector runs ~every 15 min; older than this -> CACHE
+    staleAfterMs: 45 * 60000,   // older than this -> STALE (never used for decisions)
+    primaryAsset: 'XAUUSD',     // drives the global Market Condition card
+  },
+  assetMeta: { XAUUSD: { dp: 2 }, EURUSD: { dp: 5 }, GBPUSD: { dp: 5 }, USDJPY: { dp: 3 }, BRENT: { dp: 2 } },
 };

@@ -10,7 +10,7 @@ const STR = {
     trend: 'TREND', structure: 'STRUCTURE', momentum: 'MOMENTUM', volatility: 'VOLATILITY', regime: 'REGIME', condition: 'CONDITION',
     session: 'SESSION', liquidity: 'LIQUIDITY', news: 'NEWS RISK', spread: 'SPREAD', price: 'PRICE', calendar: 'CALENDAR', timeEngine: 'TIME ENGINE',
     provider: 'Provider', latency: 'Latency', age: 'age', now: 'NOW', home: 'HOME', markets: 'MARKETS', newsTab: 'NEWS', sessionsTab: 'SESSIONS',
-    potential: 'Potential relevance', insufficient: 'INSUFFICIENT DATA', coverage: 'coverage', fallback: 'FALLBACK', unavailable: 'UNAVAILABLE', forecast: 'Forecast', previous: 'Previous', actual: 'Actual', local: 'LOCAL',
+    potential: 'Potential relevance', insufficient: 'INSUFFICIENT DATA', noData: 'no data', fails: 'fails', cache: 'CACHE', coverage: 'coverage', fallback: 'FALLBACK', unavailable: 'UNAVAILABLE', forecast: 'Forecast', previous: 'Previous', actual: 'Actual', local: 'LOCAL',
   },
   fa: {
     brand: 'TradingOS', tagline: 'ترمینال وضعیت بازار', system: 'سیستم', online: 'آنلاین', offline: 'آفلاین',
@@ -22,7 +22,7 @@ const STR = {
     trend: 'روند', structure: 'ساختار', momentum: 'مومنتوم', volatility: 'نوسان', regime: 'رژیم', condition: 'وضعیت',
     session: 'سشن', liquidity: 'نقدشوندگی', news: 'ریسک خبر', spread: 'اسپرد', price: 'قیمت', calendar: 'تقویم', timeEngine: 'موتور زمان',
     provider: 'منبع', latency: 'تأخیر', age: 'عمر', now: 'اکنون', home: 'خانه', markets: 'بازارها', newsTab: 'اخبار', sessionsTab: 'سشن‌ها',
-    potential: 'ارتباط احتمالی', insufficient: 'داده‌ی ناکافی', coverage: 'پوشش', fallback: 'جایگزین', unavailable: 'در دسترس نیست', forecast: 'پیش‌بینی', previous: 'قبلی', actual: 'واقعی', local: 'محلی',
+    potential: 'ارتباط احتمالی', insufficient: 'داده‌ی ناکافی', noData: 'بدون داده', fails: 'خطا', cache: 'کش', coverage: 'پوشش', fallback: 'جایگزین', unavailable: 'در دسترس نیست', forecast: 'پیش‌بینی', previous: 'قبلی', actual: 'واقعی', local: 'محلی',
   },
 };
 let lang = 'en';

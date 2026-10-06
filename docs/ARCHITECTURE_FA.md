@@ -43,3 +43,11 @@
 - Validation خبر + حذف تکراری بین منابع
 - لاگ‌ها کلید/توکن را ماسک می‌کنند؛ `get()` هرگز Exception نمی‌دهد و داده نمی‌سازد
 - تست‌ها: `tests/reliability.test.mjs` (سناریوهای ۱ تا ۵ و ۱۲ پرامپت)، `tests/condition.test.mjs`
+
+## فاز ۶ — داده‌ی واقعی
+- `collector/collect.mjs` در GitHub Actions هر ~۱۵ دقیقه: کندل‌های M15 (۳۰۰ عدد) ← ProviderManager ← `validate.mjs` ← `market-engines.js` ← `public/data/snapshot.json`
+- Providerها (`collector/providers.mjs`, `sources.config.mjs`): ۱) Twelve Data (کلید در Secret) ۲) Yahoo Finance (بدون کلید؛ طلا = GC=F آتی، برنت = BZ=F — روی کارت برچسب می‌خورد)
+- LKG: Snapshot منتشرشده‌ی قبلی از خود سایت خوانده می‌شود
+- فقط Provider اصلی LIVE است؛ Yahoo = FALLBACK. در UI: سن > ۲۵ دقیقه ← CACHE، > ۴۵ دقیقه ← STALE (از تصمیم حذف)
+- موتورها: ATR و پرسنتایل آن، RSI، Efficiency Ratio، سوینگ فرکتالی، HH/HL/LH/LL، BOS، CHoCH، Regime، Momentum
+- کارت وضعیت بازار از XAUUSD تغذیه می‌شود؛ Liquidity/News/Spread تا فاز ۷ «بدون داده» (نه DEMO)
