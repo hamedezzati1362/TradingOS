@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { buildAlerts, deliver } from '../collector/alerts.mjs';
+import { explainEvent } from '../public/assets/js/core/impact-kb.js';
+const now = Date.UTC(2026, 9, 7, 12, 0);
+const ev = (title, ccy, minutes, impact = 'HIGH') => { const e = { title, ccy, impact, ts: now + minutes * 60000, forecast: '0.3%', previous: '0.4%' }; return { ...e, kb: explainEvent(e) }; };
+
+test('high-impact USD event 20 min ahead -> one Persian alert, deduped next run', () => {
+  const cal = { events: [ev('CPI m/m', 'USD', 20), ev('CPI m/m', 'USD', 120), ev('Retail Sales', 'USD', 20, 'MEDIUM'), ev('GDP q/q', 'CAD', 20)] };
+  const a = buildAlerts({ calendar: cal, assets: {}, now, sent: {} });
+  assert.equal(a.length, 1); assert.match(a[0].text, /طلا: اگر عدد بالاتر از پیش‌بینی بیاید ممکن است پایین بیاید/);
+  assert.equal(buildAlerts({ calendar: cal, assets: {}, now, sent: { [a[0].id]: now } }).length, 0);
+});
+test('gold 1H+4H alignment fires once and re-arms after it breaks', () => {
+  const assets = (l1, l4) => ({ XAUUSD: { price: 4200, structure: 'BOS ↑', tech: { '1h': { summary: { label: l1 } }, '4h': { summary: { label: l4 } } } } });
+  const sent = {};
+  const a = buildAlerts({ calendar: null, assets: assets('STRONG BUY', 'STRONG BUY'), now, sent });
+  assert.equal(a.length, 1); sent[a[0].id] = now;
+  assert.equal(buildAlerts({ calendar: null, assets: assets('STRONG BUY', 'STRONG BUY'), now, sent }).length, 0);
+  buildAlerts({ calendar: null, assets: assets('BUY', 'STRONG BUY'), now, sent });
+  assert.equal(Object.keys(sent).length, 0);
+});
+test('no messenger configured -> nothing sent, no throw', async () => {
+  const r = await deliver([{ id: 'x', text: 'y' }], {}, {}, () => {});
+  assert.deepEqual(r.sent, {});
+});

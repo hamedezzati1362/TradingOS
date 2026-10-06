@@ -13,6 +13,7 @@ import { forexFactory, finnhubCalendar, finnhubNews, googleNews } from './news-p
 import { validateEventList, dedupeEvents } from '../public/assets/js/core/validators.js';
 import { explainEvent, explainHeadline } from '../public/assets/js/core/impact-kb.js';
 import { MACRO, driverStats, goldBias } from '../public/assets/js/core/macro-engine.js';
+import { buildAlerts, deliver } from './alerts.mjs';
 
 const [out, prevUrl] = process.argv.slice(2);
 const log = [];
@@ -133,8 +134,16 @@ const gsr = assets.XAUUSD && assets.XAUUSD.price && macroItems.find((x) => x.id 
 const macro = { status: macroItems.length ? macroStatus : 'UNAVAILABLE', source: macroSrc, fetchedAt: macroItems.length ? macroFetched : null,
   items: macroItems, goldBias: macroItems.length ? goldBias(macroItems) : null, goldSilverRatio: gsr };
 
-const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news, macro,
-  health: { price: pm.health(), calendar: calPm.health(), news: newsPm.health(), macro: macroPm.health() }, log: log.slice(-80), raw,
+// ---- Alerts (Bale / Telegram) ----
+let alertState = { sent: (prev && prev.alerts && prev.alerts.sent) || {}, health: [] };
+try {
+  const pending = buildAlerts({ calendar, assets, sent: alertState.sent });
+  if (process.env.ALERT_TEST === '1') pending.push({ id: `test:${Date.now()}`, text: '✅ TradingOS: پیام آزمایشی. اتصال هشدارها برقرار است.' });
+  alertState = await deliver(pending, alertState.sent, process.env, L);
+} catch (e) { L('error', `alerts failed: ${e.message}`); }
+
+const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news, macro, alerts: { sent: alertState.sent, configured: !!(process.env.BALE_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN) },
+  health: { price: pm.health(), calendar: calPm.health(), news: newsPm.health(), macro: macroPm.health(), alerts: alertState.health }, log: log.slice(-80), raw,
   rawLists: Object.fromEntries(['calendar', 'news'].map((k) => [k, cache.get(k)]).filter(([, v]) => v)) };
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(snapshot));

@@ -77,3 +77,9 @@
 - تایم‌فریم‌ها: 15m (هر اجرا)، 1H (ساعتی)، 4H (تجمیع 1H)، 1D (هر ۶ ساعت، ۲۵۰ کندل) ← فایل‌های `data/candles/{SYM}_{TF}.json`
 - حجم: حجم واقعی قراردادهای آتی CME/ICE (GC=F, 6E=F, 6B=F, 6J=F, BZ=F) از Yahoo؛ اسپات طلا/فارکس حجم متمرکز ندارد.
 - نمودار: TradingView Lightweight Charts 5.2.1 (Apache-2.0، داخل `assets/vendor`، بدون CDN): کندل + EMA20/50/200 + بولینگر اختیاری + حجم + RSI + MACD، زوم/پن؛ جدول کامل اندیکاتورها
+
+## هشدارها (بله / تلگرام)
+- `collector/alerts.mjs`: ۱) خبر HIGH مرتبط با طلا/دلار ۵ تا ۳۵ دقیقه قبل از انتشار ۲) هم‌جهتی برآیند طلا در 1H و 4H (صعودی قوی/نزولی قوی)، فقط هنگام تغییر
+- ارسال: بله (tapi.bale.ai) ← تلگرام، با ProviderManager؛ Secrets: `BALE_BOT_TOKEN`, `BALE_CHAT_ID` (و اختیاری `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
+- پیام آزمایشی: Actions ← Run workflow ← alert_test = 1
+- چون اجرا هر ~۱۵ دقیقه است، هشدار خبر بین ۵ تا ۳۵ دقیقه قبل از خبر می‌رسد

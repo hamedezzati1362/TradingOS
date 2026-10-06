@@ -384,7 +384,7 @@ function renderHealth() {
   ];
   $('health').innerHTML = `<div class="card-h"><h2>${t('dataHealth')}</h2></div>
     <div class="health-grid">${cells.map(([k, p, d]) => `<div class="hcell"><div class="k">${esc(k)}</div>${p}<div class="d">${esc(d)}</div></div>`).join('')}</div>
-    ${provTable('PRICE', prov)}${provTable('CALENDAR', (SNAP && SNAP.health.calendar) || [])}${provTable('NEWS', (SNAP && SNAP.health.news) || [])}`;
+    ${provTable('PRICE', prov)}${provTable('CALENDAR', (SNAP && SNAP.health.calendar) || [])}${provTable('NEWS', (SNAP && SNAP.health.news) || [])}${provTable('ALERTS', (SNAP && SNAP.health.alerts) || [])}`;
   $('net-pill').className = `pill ${online ? 'live' : 'offline'}`;
   $('net-pill').textContent = `${t('system')} ${online ? t('online') : t('offline')}`;
 }
