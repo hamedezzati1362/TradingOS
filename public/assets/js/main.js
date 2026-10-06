@@ -363,6 +363,17 @@ function renderNews() {
     <p class="demo-note" style="color:var(--ink-3)">${esc(n.source || '')} · ${t('age')} ${fmtAge(now - n.fetchedAt)} · <span class="fa" style="display:inline">تیتر اصلی به زبان منبع است؛ برچسب و توضیح فارسی خودکار و قاعده‌محور است.</span></p>`;
 }
 
+function renderPerf() {
+  const p = SNAP && SNAP.performance;
+  const head = `<div class="card-h"><h2>${t('trackRecord')} · XAUUSD</h2>${p ? `<span class="pill muted">${p.rows} ${t('records')}</span>` : ''}</div>`;
+  if (!p) { $('perf').innerHTML = `${head}<p class="fa">سابقه هنوز ثبت نشده؛ از این به بعد هر اجرا (هر ~۱۵ دقیقه) ذخیره می‌شود. بعد از چند روز نتیجه‌ی واقعی سیگنال‌ها اینجا نمایش داده می‌شود.</p>`; return; }
+  const tbl = (title, d) => `<div><div class="k" style="font:600 10px var(--sans);letter-spacing:1.2px;color:var(--ink-3);margin-bottom:6px">${title}</div>
+    <table><tr><th>${t('reading')}</th><th>n</th><th>${t('avgMove')}</th><th>${t('hit')}</th></tr>
+    ${Object.entries(d).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.n}</td><td class="${v.avgAtr > 0 ? 'up' : v.avgAtr < 0 ? 'down' : ''}">${v.avgAtr > 0 ? '+' : ''}${v.avgAtr} ATR</td><td>${v.hitPct == null ? '--' : v.hitPct + '%'}</td></tr>`).join('') || '<tr><td colspan="4">--</td></tr>'}</table></div>`;
+  $('perf').innerHTML = `${head}<div class="perf-grid">${tbl(t('rating1h') + ' → +1h', p.r1h_1h)}${tbl(t('rating4h') + ' → +4h', p.r4h_4h)}${tbl(t('condition') + ' → +4h', p.band_4h)}</div>
+    <p class="fa" style="color:var(--ink-3)">حرکت بعدی قیمت به واحد ATR. «hit» یعنی درصد دفعاتی که قیمت در جهت سیگنال رفته. تا وقتی n کم است (زیر ۱۰۰) نتیجه را جدی نگیرید. از ${esc(p.since ? p.since.slice(0, 10) : '--')}.</p>`;
+}
+
 function listCell(x, cfg) {
   const st = !x || !x.fetchedAt ? 'UNAVAILABLE' : displayStatus(x.status, x.fetchedAt, Date.now(), cfg);
   return [pill(st.toLowerCase(), t(st.toLowerCase())), x && x.source ? `${x.source} · ${fmtAge(Date.now() - x.fetchedAt)}` : (SNAP_ERR || '')];
@@ -399,7 +410,7 @@ function provTable(label, prov) {
 async function refreshData() {
   const r = await loadSnapshot(CONFIG.data.snapshotUrl);
   if (r.ok) { SNAP = r.snap; SNAP_ERR = null; } else SNAP_ERR = r.error;   // keep the previous snapshot (its age keeps growing)
-  safe('assets', renderAssets); safe('levels', renderLevels); safe('drivers', renderDrivers); safe('focus', renderFocus); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth); lastMinute = -1; tick();
+  safe('assets', renderAssets); safe('levels', renderLevels); safe('drivers', renderDrivers); safe('focus', renderFocus); safe('events', renderEvents); safe('news', renderNews); safe('perf', renderPerf); safe('health', renderHealth); lastMinute = -1; tick();
 }
 
 function staticText() {

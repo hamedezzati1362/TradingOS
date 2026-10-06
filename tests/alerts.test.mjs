@@ -24,3 +24,22 @@ test('no messenger configured -> nothing sent, no throw', async () => {
   const r = await deliver([{ id: 'x', text: 'y' }], {}, {}, () => {});
   assert.deepEqual(r.sent, {});
 });
+test('morning brief: once per day, weekdays 08:00-09:30 Tehran, Persian content', () => {
+  const at = (iso) => Date.parse(iso);
+  const g = { XAUUSD: { price: 4190.5, changePct: 0.4, regime: 'TRENDING', structure: 'HH → HL', levels: { adr: 80, levels: [{ name: 'PDH', price: 4200 }, { name: 'PDL', price: 4150 }] }, tech: { '1h': { summary: { label: 'BUY' } } } } };
+  const wedMorning = at('2026-10-07T05:00:00Z');  // 08:30 Tehran, Wednesday
+  const a = buildAlerts({ calendar: { events: [] }, assets: g, now: wedMorning, sent: {}, condition: { XAUUSD: { score: 72, band: 'CAUTION' } } });
+  const b = a.find((x) => x.id.startsWith('brief:'));
+  assert.ok(b); assert.match(b.text, /خلاصه‌ی صبح/); assert.match(b.text, /PDH 4200\.00/); assert.match(b.text, /احتیاط/);
+  assert.ok(!buildAlerts({ calendar: null, assets: g, now: wedMorning, sent: { [b.id]: 1 } }).some((x) => x.id.startsWith('brief:')));
+  assert.ok(!buildAlerts({ calendar: null, assets: g, now: at('2026-10-07T10:00:00Z'), sent: {} }).some((x) => x.id.startsWith('brief:')));  // 13:30
+  assert.ok(!buildAlerts({ calendar: null, assets: g, now: at('2026-10-10T05:00:00Z'), sent: {} }).some((x) => x.id.startsWith('brief:')));  // Saturday
+});
+test('key level touch alert fires once per level per day', () => {
+  const now = Date.parse('2026-10-07T12:00:00Z');
+  const assets = { XAUUSD: { price: 4201, levels: { adrPct: 60, levels: [{ name: 'PDH', price: 4200 }, { name: 'PIVOT', price: 4198 }] } } };
+  const lastBars = { XAUUSD: [{ h: 4202, l: 4195 }] };
+  const a = buildAlerts({ calendar: null, assets, now, sent: {}, lastBars });
+  assert.equal(a.length, 1); assert.match(a[0].text, /PDH/);
+  assert.equal(buildAlerts({ calendar: null, assets, now, sent: { [a[0].id]: now }, lastBars }).length, 0);
+});

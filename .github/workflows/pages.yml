@@ -11,7 +11,7 @@ on:
         required: false
         default: '0'
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 concurrency:
@@ -36,6 +36,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Load history branch
+        run: |
+          if git fetch -q --depth=1 origin history; then git worktree add -q -B history hist FETCH_HEAD; else git worktree add -q --orphan -b history hist; fi
       - name: Collect market data
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
@@ -45,8 +48,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ALERT_TEST: ${{ github.event.inputs.alert_test }}
+          HISTORY_DIR: hist
         # The collector never fails the deploy: on total failure it falls back to the last published snapshot.
         run: node collector/collect.mjs public/data/snapshot.json https://hamedezzati1362.github.io/TradingOS/data/snapshot.json || echo "collector failed; deploying without fresh data"
+      - name: Save history
+        run: |
+          cd hist
+          git config user.name "tradingos-bot"; git config user.email "tradingos-bot@users.noreply.github.com"
+          git add -A && git commit -qm "history $(date -u +%FT%TZ)" && git push -q origin history || echo "no history change"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: public }

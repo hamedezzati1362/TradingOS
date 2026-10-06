@@ -14,6 +14,10 @@ import { validateEventList, dedupeEvents } from '../public/assets/js/core/valida
 import { explainEvent, explainHeadline } from '../public/assets/js/core/impact-kb.js';
 import { MACRO, driverStats, goldBias } from '../public/assets/js/core/macro-engine.js';
 import { buildAlerts, deliver } from './alerts.mjs';
+import { assetCondition } from '../public/assets/js/core/asset-condition.js';
+import { CONFIG } from '../public/assets/js/config.js';
+import { appendHistory } from './history.mjs';
+import { loadHistory, performanceSummary } from './evaluate.mjs';
 
 const [out, prevUrl] = process.argv.slice(2);
 const log = [];
@@ -55,7 +59,7 @@ const providers = [twelveData(process.env.TWELVEDATA_API_KEY, SOURCES.twelveData
 });
 const pm = new ProviderManager({ kind: 'price', providers, cache, validate: validateCandles, staleAfterMs: 45 * 60000, log: L, retries: 1, backoffMs: 1500 });
 
-const assets = {}, raw = {};
+const assets = {}, raw = {}, lastBars = {};
 for (const sym of SOURCES.assets) {
   // Higher timeframes refresh on their own cadence (saves API credits); 15m every run.
   const tfData = {};
@@ -70,6 +74,7 @@ for (const sym of SOURCES.assets) {
   const daily = tfData['1d'] ? tfData['1d'].data.candles : null;
   const r = await pm.get(sym, { interval: '15min', bars: 500 });
   if (r.data) {
+    lastBars[sym] = r.data.candles.slice(-2);
     raw[sym] = { data: { ...r.data, candles: r.data.candles.slice(-150) }, source: r.source, fetchedAt: r.fetchedAt };
     let a = null;
     try { a = analyse(r.data.candles); } catch (e) { L('error', `${sym}: analysis failed ${e.message}`); }
@@ -134,15 +139,27 @@ const gsr = assets.XAUUSD && assets.XAUUSD.price && macroItems.find((x) => x.id 
 const macro = { status: macroItems.length ? macroStatus : 'UNAVAILABLE', source: macroSrc, fetchedAt: macroItems.length ? macroFetched : null,
   items: macroItems, goldBias: macroItems.length ? goldBias(macroItems) : null, goldSilverRatio: gsr };
 
+// ---- Condition per asset (same engine as the dashboard) ----
+const conditions = {};
+for (const sym of SOURCES.assets) { try { conditions[sym] = assetCondition(sym, { asset: assets[sym], calendar, cfg: CONFIG }); } catch (e) { L('error', `${sym}: condition failed ${e.message}`); } }
+
+// ---- History (durable, written to the 'history' branch by the workflow) ----
+if (process.env.HISTORY_DIR) {
+  try { appendHistory(process.env.HISTORY_DIR, { now: Date.now(), assets, conditions }); L('info', 'history record appended'); }
+  catch (e) { L('error', `history failed: ${e.message}`); }
+}
+let performance = null;
+try { performance = performanceSummary(loadHistory(process.env.HISTORY_DIR)); } catch (e) { L('error', `track record failed: ${e.message}`); }
+
 // ---- Alerts (Bale / Telegram) ----
 let alertState = { sent: (prev && prev.alerts && prev.alerts.sent) || {}, health: [] };
 try {
-  const pending = buildAlerts({ calendar, assets, sent: alertState.sent });
+  const pending = buildAlerts({ calendar, assets, sent: alertState.sent, condition: conditions, macro, lastBars });
   if (process.env.ALERT_TEST === '1') pending.push({ id: `test:${Date.now()}`, text: '✅ TradingOS: پیام آزمایشی. اتصال هشدارها برقرار است.' });
   alertState = await deliver(pending, alertState.sent, process.env, L);
 } catch (e) { L('error', `alerts failed: ${e.message}`); }
 
-const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news, macro, alerts: { sent: alertState.sent, configured: !!(process.env.BALE_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN) },
+const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news, macro, performance, conditions, alerts: { sent: alertState.sent, configured: !!(process.env.BALE_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN) },
   health: { price: pm.health(), calendar: calPm.health(), news: newsPm.health(), macro: macroPm.health(), alerts: alertState.health }, log: log.slice(-80), raw,
   rawLists: Object.fromEntries(['calendar', 'news'].map((k) => [k, cache.get(k)]).filter(([, v]) => v)) };
 mkdirSync(dirname(out), { recursive: true });

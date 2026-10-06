@@ -3,11 +3,35 @@
 import { ProviderManager, redact } from '../public/assets/js/core/provider-manager.js';
 
 const IR = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const IRDAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' });
+const FADATE = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { timeZone: 'Asia/Tehran', weekday: 'long', day: 'numeric', month: 'long' });
+const BAND_FA = { FAVORABLE: 'مناسب', CAUTION: 'احتیاط', NO_TRADE: 'معامله نکن / صبر', INSUFFICIENT: 'داده‌ی ناکافی' };
+const tehranHM = (t) => { const [h, m] = IR.format(new Date(t)).split(':').map(Number); return h * 60 + m; };
+const tehranWd = (t) => new Date(new Date(t).toLocaleString('en-US', { timeZone: 'Asia/Tehran' })).getDay();
 const FA_LABEL = { 'STRONG BUY': 'صعودی قوی', BUY: 'صعودی', NEUTRAL: 'خنثی', SELL: 'نزولی', 'STRONG SELL': 'نزولی قوی' };
 
 /** Returns [{id, text}] for alerts that should fire now and were not sent before. */
-export function buildAlerts({ calendar, assets, now = Date.now(), sent = {}, leadMin = [5, 35] }) {
+export function buildAlerts({ calendar, assets, now = Date.now(), sent = {}, leadMin = [5, 35], condition = {}, macro = null, lastBars = {}, briefAt = [8 * 60, 9 * 60 + 30] }) {
   const out = [];
+  const g = assets && assets.XAUUSD;
+  // 0) Morning brief (Mon-Fri, first run between 08:00 and 09:30 Tehran).
+  const today = IRDAY.format(new Date(now)), hm = tehranHM(now), wd = tehranWd(now);
+  if (g && g.price != null && wd >= 1 && wd <= 5 && hm >= briefAt[0] && hm <= briefAt[1] && !sent[`brief:${today}`]) {
+    out.push({ id: `brief:${today}`, text: morningBrief({ g, calendar, now, today, condition: condition.XAUUSD, macro }) });
+  }
+  // 3) Gold touches a key level on the latest closed 15m bars (once per level per broker day).
+  if (g && g.levels && lastBars.XAUUSD) {
+    const watch = new Set(['PDH', 'PDL', 'WEEK HIGH', 'WEEK LOW', 'PWH', 'PWL']);
+    for (const lv of g.levels.levels.filter((x) => watch.has(x.name))) {
+      const hit = lastBars.XAUUSD.find((b) => b.h >= lv.price && b.l <= lv.price);
+      const id = `lvl:${today}:${lv.name}:${lv.price.toFixed(2)}`;
+      if (!hit || sent[id]) continue;
+      const above = g.price >= lv.price;
+      out.push({ id, text: [`🎯 طلا به سطح ${lv.name} (${lv.price.toFixed(2)}) رسید.`, `قیمت فعلی: ${g.price.toFixed(2)} — ${above ? 'بالای' : 'زیر'} سطح.`,
+        lv.name.includes('H') ? 'سقف مهم: محل احتمالی برگشت یا در صورت تثبیت بالای آن، شکست.' : 'کف مهم: محل احتمالی برگشت یا در صورت تثبیت زیر آن، شکست.',
+        `ADR امروز: ${g.levels.adrPct ?? '--'}% · برآیند 1H: ${(g.tech && g.tech['1h'] && FA_LABEL[g.tech['1h'].summary.label]) || '--'}`, 'TradingOS · اطلاع‌رسانی، نه توصیه‌ی معامله'].join('\n') });
+    }
+  }
   // 1) High-impact event relevant to gold or USD starting within the lead window.
   for (const e of (calendar && calendar.events) || []) {
     if (e.impact !== 'HIGH' || !e.kb) continue;
@@ -35,6 +59,28 @@ export function buildAlerts({ calendar, assets, now = Date.now(), sent = {}, lea
     if (aligned === 'NONE') for (const k of Object.keys(sent)) if (k.startsWith('gold-align:')) delete sent[k];   // re-arm
   }
   return out;
+}
+
+function morningBrief({ g, calendar, now, today, condition, macro }) {
+  const tf = (k) => (g.tech && g.tech[k] ? FA_LABEL[g.tech[k].summary.label] : '--');
+  const L = g.levels || {}, lv = (n) => { const x = (L.levels || []).find((y) => y.name === n); return x ? x.price.toFixed(2) : '--'; };
+  const evs = ((calendar && calendar.events) || []).filter((e) => IRDAY.format(new Date(e.ts)) === today && e.impact !== 'LOW' && e.kb && (e.ccy === 'USD' || e.kb.relevance.includes('XAUUSD')))
+    .sort((a, b) => (a.impact === b.impact ? a.ts - b.ts : a.impact === 'HIGH' ? -1 : 1)).slice(0, 6);
+  return [
+    `☀️ خلاصه‌ی صبح TradingOS — ${FADATE.format(new Date(now))}`,
+    '',
+    `🟡 طلا: ${g.price.toFixed(2)} (${g.changePct > 0 ? '+' : ''}${g.changePct ?? '--'}% در ۲۴ ساعت)`,
+    `وضعیت: ${condition ? `${condition.score ?? '--'} — ${BAND_FA[condition.band]}` : '--'} | رژیم: ${g.regime} | ساختار 15m: ${g.structure}`,
+    `برآیند اندیکاتورها → 15m: ${tf('15m')} | 1H: ${tf('1h')} | 4H: ${tf('4h')} | 1D: ${tf('1d')}`,
+    '',
+    `📏 سطوح: PDH ${lv('PDH')} | PDL ${lv('PDL')} | Pivot ${lv('PIVOT')}`,
+    `هفته: ${lv('WEEK HIGH')} / ${lv('WEEK LOW')} | ADR(14): ${L.adr ? L.adr.toFixed(1) : '--'}`,
+    macro && macro.goldBias ? `🌐 زمینه‌ی کلان: ${macro.goldBias.labelFa}` : '',
+    '',
+    evs.length ? `📅 خبرهای امروز (تهران):\n${evs.map((e) => `• ${IR.format(new Date(e.ts))} ${e.impact === 'HIGH' ? '🔴' : '🟠'} ${e.ccy} ${e.title}${e.forecast ? ` (پیش‌بینی ${e.forecast})` : ''}`).join('\n')}` : '📅 امروز خبر مهمی برای طلا/دلار در تقویم نیست.',
+    '',
+    'احتمالی، نه توصیه‌ی معامله.',
+  ].filter((x, i, a) => !(x === '' && a[i - 1] === '')).join('\n');
 }
 
 function messenger(name, base, token, chatId) {
