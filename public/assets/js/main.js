@@ -136,9 +136,54 @@ function renderAssets() {
         <span class="k">${t('volatility')}</span><span class="meter" title="ATR p${a.atrPct}"><i style="width:${a.atrPct ?? 0}%;background:var(--warn)"></i></span>
         <span class="k">${t('regime')}</span><span class="v">${esc(a.regime)}</span>
         <span class="k">RSI</span><span class="v">${a.rsi ?? '--'}</span></div>
+      ${a.levels ? `<div class="mini-lv"><span class="k">ADR</span><span class="v" style="color:${adrColor(a.levels.adrPct)}">${a.levels.adrPct ?? '--'}%</span>
+        <span class="k">▲ ${esc(a.levels.above ? a.levels.above.name : '--')}</span><span class="v">${a.levels.above ? fmtDist(a.levels.above.price, a, dp) : '--'}</span>
+        <span class="k">▼ ${esc(a.levels.below ? a.levels.below.name : '--')}</span><span class="v">${a.levels.below ? fmtDist(a.levels.below.price, a, dp) : '--'}</span></div>` : ''}
       <div class="cond"><span class="k" style="font-size:11px;color:var(--ink-3)">${t('condition')}</span><span class="score num" style="color:${cond == null ? 'var(--ink-3)' : scoreColor(cond)}">${cond ?? '--'}</span></div>
       <div class="src mono">${esc(a.source)} · ${fmtAge(now - a.fetchedAt)}${a.proxy ? ` · ${esc(a.proxy)}` : ''}</div></article>`;
   }).join('');
+}
+
+const adrColor = (p) => (p == null ? 'var(--ink-3)' : p >= 100 ? 'var(--bad)' : p >= 75 ? 'var(--warn)' : 'var(--up)');
+function fmtDist(level, a, dp) {
+  const d = a.atr ? (level - a.price) / a.atr : null;
+  return `${level.toFixed(dp)}${d != null ? ` (${d > 0 ? '+' : ''}${d.toFixed(1)} ATR)` : ''}`;
+}
+
+let lvSym = CONFIG.data.primaryAsset;
+try { const v = localStorage.getItem('tos.lv'); if (CONFIG.assets.includes(v)) lvSym = v; } catch { /* ignore */ }
+function renderLevels() {
+  const a = SNAP && SNAP.assets[lvSym], now = Date.now(), st = dstatus(a, now), dp = (CONFIG.assetMeta[lvSym] || {}).dp ?? 2;
+  const head = `<div class="card-h"><h2>${t('keyLevels')}</h2>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>
+    <div class="filters">${CONFIG.assets.map((x) => `<button type="button" data-lv="${x}" class="${x === lvSym ? 'on' : ''}">${x}</button>`).join('')}</div>`;
+  const L = a && a.levels;
+  if (!L) { $('levels').innerHTML = `${head}<p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p>`; return; }
+  const rows = [...L.levels, { name: t('now'), price: a.price, now: true }].sort((x, y) => y.price - x.price);
+  const idx = rows.findIndex((r) => r.now);
+  const view = rows.slice(Math.max(0, idx - 7), idx + 8);
+  const p = L.adrPct ?? 0;
+  $('levels').innerHTML = `${head}<div class="lv-body">
+    <div class="ladder">${view.map((r, i) => {
+      const cls = r.now ? 'now' : r.price > a.price ? 'res' : 'sup';
+      const near = !r.now && Math.abs(rows.indexOf(r) - idx) === 1 ? 'near' : '';
+      const d = a.atr && !r.now ? ((r.price - a.price) / a.atr) : null;
+      return `<div class="lrow ${cls} ${near}"><span class="n">${esc(r.name)}</span><span class="p">${r.price.toFixed(dp)}</span><span class="d">${d != null ? `${d > 0 ? '+' : ''}${d.toFixed(1)} ATR` : ''}</span></div>`;
+    }).join('')}</div>
+    <div class="adr"><div class="k" style="font:600 10px var(--sans);letter-spacing:1.2px;color:var(--ink-3)">ADR (14D)</div>
+      <div class="big" style="color:${adrColor(L.adrPct)}">${L.adrPct ?? '--'}%</div>
+      <div class="track"><i style="width:${Math.min(100, p)}%;background:${adrColor(L.adrPct)}"></i></div>
+      <div class="mono" style="font-size:11px;color:var(--ink-2)">${t('today')} ${L.todayRange != null ? L.todayRange.toFixed(dp) : '--'} / ADR ${L.adr != null ? L.adr.toFixed(dp) : '--'}</div>
+      <div class="fa">${esc(adrNote(L.adrPct))}</div>
+      ${L.asia ? `<div class="mono" style="font-size:11px;color:var(--ink-2)">ASIA ${L.asia.l.toFixed(dp)} – ${L.asia.h.toFixed(dp)}</div>` : ''}
+    </div></div>
+    <p class="demo-note" style="color:var(--ink-3)">PDH/PDL/Pivots: ${t('serverDay')} · Week/ADR: ${esc(a.source)} daily · ${fmtAge(now - a.fetchedAt)}</p>`;
+}
+function adrNote(p) {
+  if (p == null) return '';
+  if (p >= 100) return 'رنج امروز از میانگین روزانه گذشته؛ ادامه‌ی حرکت بزرگ کم‌احتمال‌تر است و ریسک برگشت بیشتر.';
+  if (p >= 75) return 'بیشتر رنج معمول روز طی شده؛ فضای حرکت باقی‌مانده محدود است.';
+  if (p >= 40) return 'رنج امروز در حد معمول؛ هنوز فضای حرکت وجود دارد.';
+  return 'رنج امروز کم است؛ ممکن است حرکت اصلی روز هنوز شروع نشده باشد.';
 }
 
 let LAST_SS = null;
@@ -252,7 +297,7 @@ function provTable(label, prov) {
 async function refreshData() {
   const r = await loadSnapshot(CONFIG.data.snapshotUrl);
   if (r.ok) { SNAP = r.snap; SNAP_ERR = null; } else SNAP_ERR = r.error;   // keep the previous snapshot (its age keeps growing)
-  safe('assets', renderAssets); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth); lastMinute = -1; tick();
+  safe('assets', renderAssets); safe('levels', renderLevels); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth); lastMinute = -1; tick();
 }
 
 function staticText() {
@@ -271,7 +316,7 @@ function tick() {
 }
 function renderAll() {
   lastMinute = -1; staticText();
-  safe('assets', renderAssets); safe('drivers', renderDrivers); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth);
+  safe('assets', renderAssets); safe('levels', renderLevels); safe('drivers', renderDrivers); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth);
   tick();
 }
 
@@ -291,6 +336,11 @@ $('lang-btn').addEventListener('click', () => { setLang(getLang() === 'fa' ? 'en
 window.addEventListener('online', () => safe('health', renderHealth));
 window.addEventListener('offline', () => safe('health', renderHealth));
 setupTabs();
+$('levels').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-lv]'); if (!b) return;
+  lvSym = b.dataset.lv; try { localStorage.setItem('tos.lv', lvSym); } catch { /* ignore */ }
+  safe('levels', renderLevels);
+});
 $('events').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-evf]'); if (!b) return;
   evFilter = b.dataset.evf; try { localStorage.setItem('tos.evf', evFilter); } catch { /* ignore */ }

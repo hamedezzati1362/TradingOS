@@ -51,3 +51,21 @@ test('display status ages LIVE -> CACHE -> STALE', () => {
   assert.equal(displayStatus('FALLBACK', n - 60 * 60000, n, cfg), 'STALE');
   assert.equal(displayStatus('UNAVAILABLE', n, n, cfg), 'UNAVAILABLE');
 });
+import { keyLevels, serverDayId } from '../public/assets/js/core/market-engines.js';
+test('broker day rolls at 17:00 New York (EDT and EST)', () => {
+  assert.equal(serverDayId(Date.UTC(2026, 6, 15, 20, 59)), '2026-07-15');   // 16:59 EDT
+  assert.equal(serverDayId(Date.UTC(2026, 6, 15, 21, 0)), '2026-07-16');    // 17:00 EDT
+  assert.equal(serverDayId(Date.UTC(2026, 0, 15, 22, 0)), '2026-01-16');    // 17:00 EST
+});
+test('key levels: PDH/PDL from previous broker day, pivots, ADR%', () => {
+  const start = Date.UTC(2026, 6, 13, 21, 0);  // Tue 00:00 server
+  const m15 = [];
+  for (let i = 0; i < 96 * 2; i++) { const day = i < 96 ? 0 : 1; const base = day ? 110 : 100; m15.push({ t: start + i * M15, o: base, h: base + 2, l: base - 2, c: base + (i % 96) / 96 }); }
+  const daily = Array.from({ length: 20 }, (_, i) => ({ t: Date.UTC(2026, 5, 20 + i), o: 100, h: 105, l: 95, c: 100 }));
+  const L = keyLevels(m15, daily);
+  const g = (n) => L.levels.find((x) => x.name === n).price;
+  assert.equal(g('PDH'), 102); assert.equal(g('PDL'), 98);
+  assert.ok(Math.abs(g('PIVOT') - (102 + 98 + (100 + 95 / 96)) / 3) < 1e-9);
+  assert.equal(L.adr, 10); assert.equal(L.todayRange, 4); assert.equal(L.adrPct, 40);
+  assert.ok(L.above.price > L.price && L.below.price < L.price);
+});

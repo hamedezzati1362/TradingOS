@@ -11,8 +11,9 @@ export function twelveData(apiKey, symbolMap) {
   return {
     name: 'TwelveData', priority: 1, timeoutMs: 15000, retries: 1,
     enabled: !!apiKey,
-    supports: (sym) => !!symbolMap[sym],
+    supports: (sym) => !!symbolMap[sym.split(':')[0]],
     async fetch(sym, { interval = '15min', bars = 300 } = {}) {
+      sym = sym.split(':')[0];
       const s = symbolMap[sym]; if (!s) throw new Error(`TwelveData: no mapping for ${sym}`);
       const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(s)}&interval=${interval}&outputsize=${bars}&timezone=UTC&order=ASC&apikey=${apiKey}`;
       const j = await getJson(url, 'TwelveData');
@@ -25,11 +26,13 @@ export function twelveData(apiKey, symbolMap) {
 export function yahoo(symbolMap) {
   return {
     name: 'Yahoo', priority: 2, timeoutMs: 15000, retries: 1, enabled: true,
-    supports: (sym) => !!symbolMap[sym],
+    supports: (sym) => !!symbolMap[sym.split(':')[0]],
     async fetch(sym, { interval = '15min' } = {}) {
+      sym = sym.split(':')[0];
       const s = symbolMap[sym]; if (!s) throw new Error(`Yahoo: no mapping for ${sym}`);
-      const iv = { '15min': '15m', '1h': '60m' }[interval] || '15m';
-      const j = await getJson(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s)}?interval=${iv}&range=5d`, 'Yahoo');
+      const iv = { '15min': '15m', '1h': '60m', '1day': '1d' }[interval] || '15m';
+      const range = interval === '1day' ? '3mo' : '10d';
+      const j = await getJson(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s)}?interval=${iv}&range=${range}`, 'Yahoo');
       const r = j.chart && j.chart.result && j.chart.result[0];
       if (!r || !r.timestamp) throw new Error(`Yahoo: ${(j.chart && j.chart.error && j.chart.error.description) || 'no data'}`);
       const q = r.indicators.quote[0]; const candles = [];

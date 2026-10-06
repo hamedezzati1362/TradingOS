@@ -4,7 +4,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ProviderManager, MemoryCache, redact } from '../public/assets/js/core/provider-manager.js';
-import { analyse } from '../public/assets/js/core/market-engines.js';
+import { analyse, keyLevels } from '../public/assets/js/core/market-engines.js';
 import { twelveData, yahoo } from './providers.mjs';
 import { SOURCES } from './sources.config.mjs';
 import { validateCandles } from './validate.mjs';
@@ -35,11 +35,20 @@ const pm = new ProviderManager({ kind: 'price', providers, cache, validate: vali
 
 const assets = {}, raw = {};
 for (const sym of SOURCES.assets) {
-  const r = await pm.get(sym, { interval: '15min', bars: 300 });
+  // Daily candles change slowly: refresh every 6h, otherwise reuse the cached set (saves API credits).
+  const dkey = `${sym}:1day`, dc = cache.get(dkey);
+  let daily = dc ? dc.data.candles : null;
+  if (!dc || Date.now() - dc.fetchedAt > 6 * 3600000) {
+    const dr = await pm.get(dkey, { interval: '1day', bars: 40 });
+    if (dr.data) { daily = dr.data.candles; raw[dkey] = { data: dr.data, source: dr.source, fetchedAt: dr.fetchedAt }; }
+    if (providers[0] && providers[0].name === 'TwelveData') await new Promise((res) => setTimeout(res, 8000));
+  } else raw[dkey] = dc;
+  const r = await pm.get(sym, { interval: '15min', bars: 500 });
   if (r.data) {
-    raw[sym] = { data: { ...r.data, candles: r.data.candles.slice(-200) }, source: r.source, fetchedAt: r.fetchedAt };
+    raw[sym] = { data: { ...r.data, candles: r.data.candles.slice(-150) }, source: r.source, fetchedAt: r.fetchedAt };
     let a = null;
     try { a = analyse(r.data.candles); } catch (e) { L('error', `${sym}: analysis failed ${e.message}`); }
+    try { if (a) a.levels = keyLevels(r.data.candles, daily); } catch (e) { L('error', `${sym}: levels failed ${e.message}`); }
     assets[sym] = { status: r.status, source: r.source, ref: r.data.ref, fetchedAt: r.fetchedAt, proxy: SOURCES.proxyNote[`${r.source}:${sym}`] || null, ...(a || {}) };
   } else assets[sym] = { status: 'UNAVAILABLE', source: null };
   if (providers[0] && providers[0].name === 'TwelveData') await new Promise((res) => setTimeout(res, 8000)); // free tier: 8 req/min

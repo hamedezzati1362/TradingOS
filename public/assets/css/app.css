@@ -42,12 +42,13 @@ button { font: inherit; color: inherit; }
     "clk clk clk clk clk clk clk clk clk clk clk clk"
     "cnd cnd cnd cnd cnd ses ses ses ses ses ses ses"
     "ast ast ast ast ast ast ast ast ast ast ast ast"
+    "lvl lvl lvl lvl lvl lvl lvl lvl lvl lvl lvl lvl"
     "tml tml tml tml tml tml tml tml tml tml tml tml"
     "drv drv drv drv drv evt evt evt evt evt evt evt"
     "nws nws nws nws nws nws nws nws nws nws nws nws"
     "hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt"; }
 .clocks { grid-area: clk; } .condition { grid-area: cnd; } .sessions { grid-area: ses; } .assets { grid-area: ast; }
-.timeline { grid-area: tml; } .news { grid-area: nws; } .drivers { grid-area: drv; } .events { grid-area: evt; } .health { grid-area: hlt; }
+.timeline { grid-area: tml; } .levels { grid-area: lvl; } .news { grid-area: nws; } .drivers { grid-area: drv; } .events { grid-area: evt; } .health { grid-area: hlt; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; min-width: 0; }
 .card-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
@@ -155,7 +156,7 @@ button { font: inherit; color: inherit; }
 }
 @media (max-width: 1024px) {
   .grid { grid-template-areas: "clk clk clk clk clk clk clk clk clk clk clk clk" "cnd cnd cnd cnd cnd cnd cnd cnd cnd cnd cnd cnd"
-    "ses ses ses ses ses ses ses ses ses ses ses ses" "ast ast ast ast ast ast ast ast ast ast ast ast" "tml tml tml tml tml tml tml tml tml tml tml tml"
+    "ses ses ses ses ses ses ses ses ses ses ses ses" "ast ast ast ast ast ast ast ast ast ast ast ast" "lvl lvl lvl lvl lvl lvl lvl lvl lvl lvl lvl lvl" "tml tml tml tml tml tml tml tml tml tml tml tml"
     "evt evt evt evt evt evt evt evt evt evt evt evt" "nws nws nws nws nws nws nws nws nws nws nws nws" "drv drv drv drv drv drv drv drv drv drv drv drv" "hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt"; }
   .clocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .assets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -210,3 +211,23 @@ button { font: inherit; color: inherit; }
 .tags span { font: 11px 'Vazirmatn', var(--sans); padding: 2px 8px; border-radius: 999px; background: rgba(57,135,229,.12); color: var(--info); }
 .news-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
 @media (max-width: 1024px) { .news-grid { grid-template-columns: 1fr; } }
+
+/* key levels (phase 8a) */
+.lv-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.ladder { display: grid; gap: 2px; font: 12px var(--mono); }
+.lrow { display: grid; grid-template-columns: 96px 1fr 90px; gap: 10px; align-items: center; padding: 4px 8px; border-radius: 5px; }
+.lrow .n { color: var(--ink-2); font-size: 11px; letter-spacing: .5px; }
+.lrow .d { text-align: end; color: var(--ink-3); font-size: 11px; }
+.lrow .p { text-align: end; }
+.lrow.near { background: var(--panel-2); }
+.lrow.now { background: rgba(57,135,229,.14); color: var(--info); font-weight: 700; }
+.lrow.res .n { color: #e66767; } .lrow.sup .n { color: var(--up); }
+.adr { display: grid; gap: 8px; align-content: start; }
+.adr .big { font: 700 34px var(--mono); }
+.adr .track { height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; position: relative; }
+.adr .track i { display: block; height: 100%; border-radius: 5px; }
+.adr .track b { position: absolute; top: -3px; bottom: -3px; left: 100%; width: 2px; background: var(--ink-3); }
+.mini-lv { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; font: 11px var(--mono); margin-top: 8px; }
+.mini-lv .k { color: var(--ink-3); }
+.mini-lv .v { text-align: end; }
+@media (max-width: 640px) { .lv-body { grid-template-columns: 1fr; } .lrow { grid-template-columns: 84px 1fr 70px; } }

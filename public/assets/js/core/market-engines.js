@@ -1,3 +1,4 @@
+import { zoneOffsetMinutes } from '../engines/time-engine.js';
 // Market engines (Phase 6/8 core): pure functions on OHLC candles [{t, o, h, l, c}] oldest -> newest.
 // Used by the data collector (Node) and unit tests. No signals: only descriptions of state.
 
@@ -107,5 +108,68 @@ export function analyse(candles) {
     structure: st.label, bias: st.bias, bos: st.bos, choch: st.choch, regime: reg, momentum: mom,
     regimeScore: REGIME_SCORE[reg], structureScore: st.label === 'UNCLEAR' ? null : st.bias !== 0 ? 80 : 45,
     spark: c.slice(-48).map((x) => x.c),
+  };
+}
+
+/* ---------------- Key levels & ADR (Phase 8a) ---------------- */
+
+/** Broker trading day id (YYYY-MM-DD of server time = New York + 7h, so the day rolls at 17:00 New York). */
+export function serverDayId(t, cfg = { baseTz: 'America/New_York', offsetHours: 7 }) {
+  const ms = t + (zoneOffsetMinutes(new Date(t), cfg.baseTz) + cfg.offsetHours * 60) * 60000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function hl(c) { return c.length ? { h: Math.max(...c.map((x) => x.h)), l: Math.min(...c.map((x) => x.l)), o: c[0].o, c: c[c.length - 1].c } : null; }
+
+/**
+ * @param m15    15-minute candles (oldest first)
+ * @param daily  daily candles (oldest first, last may be the forming day)
+ * @param opts   { serverTime, asiaUtc: [startHour, endHour] }
+ */
+export function keyLevels(m15, daily, opts = {}) {
+  const st = opts.serverTime || { baseTz: 'America/New_York', offsetHours: 7 };
+  const [aS, aE] = opts.asiaUtc || [0, 7];
+  const last = m15[m15.length - 1], price = last.c;
+  const days = new Map();
+  for (const x of m15) { const d = serverDayId(x.t, st); if (!days.has(d)) days.set(d, []); days.get(d).push(x); }
+  const ids = [...days.keys()];
+  const today = hl(days.get(ids[ids.length - 1]));
+  const prev = ids.length > 1 ? hl(days.get(ids[ids.length - 2])) : null;
+
+  const utcDay = new Date(last.t).toISOString().slice(0, 10);
+  const asiaBars = m15.filter((x) => { const d = new Date(x.t); return d.toISOString().slice(0, 10) === utcDay && d.getUTCHours() >= aS && d.getUTCHours() < aE; });
+  const asia = asiaBars.length >= 8 ? hl(asiaBars) : null;
+
+  // ADR(14) and weekly levels from provider daily candles (complete days only).
+  let adr = null, week = null, prevWeek = null;
+  if (daily && daily.length > 15) {
+    const done = daily.slice(0, -1);
+    const r = done.slice(-14).map((d) => d.h - d.l);
+    adr = r.reduce((a, b) => a + b, 0) / r.length;
+    const wk = (t) => { const d = new Date(t); const day = (d.getUTCDay() + 6) % 7; return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day); };
+    const thisW = wk(daily[daily.length - 1].t);
+    week = hl(daily.filter((d) => wk(d.t) === thisW));
+    prevWeek = hl(daily.filter((d) => wk(d.t) === thisW - 7 * 86400000));
+    if (week && today) week = { ...week, h: Math.max(week.h, today.h), l: Math.min(week.l, today.l) };
+  }
+  const levels = [];
+  const add = (name, v) => { if (v != null && Number.isFinite(v)) levels.push({ name, price: v }); };
+  if (prev) {
+    add('PDH', prev.h); add('PDL', prev.l); add('PDC', prev.c);
+    const P = (prev.h + prev.l + prev.c) / 3;
+    add('PIVOT', P); add('R1', 2 * P - prev.l); add('S1', 2 * P - prev.h); add('R2', P + (prev.h - prev.l)); add('S2', P - (prev.h - prev.l));
+  }
+  if (today) { add('DAY OPEN', today.o); add('DAY HIGH', today.h); add('DAY LOW', today.l); }
+  if (asia) { add('ASIA HIGH', asia.h); add('ASIA LOW', asia.l); }
+  if (week) { add('WEEK HIGH', week.h); add('WEEK LOW', week.l); }
+  if (prevWeek) { add('PWH', prevWeek.h); add('PWL', prevWeek.l); }
+  levels.sort((a, b) => b.price - a.price);
+  const above = levels.filter((l) => l.price > price).sort((a, b) => a.price - b.price)[0] || null;
+  const below = levels.filter((l) => l.price < price).sort((a, b) => b.price - a.price)[0] || null;
+  const todayRange = today ? today.h - today.l : null;
+  return {
+    price, levels, above, below,
+    adr, todayRange, adrPct: adr && todayRange != null ? Math.round((todayRange / adr) * 100) : null,
+    asia: asia ? { h: asia.h, l: asia.l } : null,
   };
 }
