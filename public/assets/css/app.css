@@ -44,9 +44,10 @@ button { font: inherit; color: inherit; }
     "ast ast ast ast ast ast ast ast ast ast ast ast"
     "tml tml tml tml tml tml tml tml tml tml tml tml"
     "drv drv drv drv drv evt evt evt evt evt evt evt"
+    "nws nws nws nws nws nws nws nws nws nws nws nws"
     "hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt"; }
 .clocks { grid-area: clk; } .condition { grid-area: cnd; } .sessions { grid-area: ses; } .assets { grid-area: ast; }
-.timeline { grid-area: tml; } .drivers { grid-area: drv; } .events { grid-area: evt; } .health { grid-area: hlt; }
+.timeline { grid-area: tml; } .news { grid-area: nws; } .drivers { grid-area: drv; } .events { grid-area: evt; } .health { grid-area: hlt; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; min-width: 0; }
 .card-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
@@ -155,7 +156,7 @@ button { font: inherit; color: inherit; }
 @media (max-width: 1024px) {
   .grid { grid-template-areas: "clk clk clk clk clk clk clk clk clk clk clk clk" "cnd cnd cnd cnd cnd cnd cnd cnd cnd cnd cnd cnd"
     "ses ses ses ses ses ses ses ses ses ses ses ses" "ast ast ast ast ast ast ast ast ast ast ast ast" "tml tml tml tml tml tml tml tml tml tml tml tml"
-    "evt evt evt evt evt evt evt evt evt evt evt evt" "drv drv drv drv drv drv drv drv drv drv drv drv" "hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt"; }
+    "evt evt evt evt evt evt evt evt evt evt evt evt" "nws nws nws nws nws nws nws nws nws nws nws nws" "drv drv drv drv drv drv drv drv drv drv drv drv" "hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt hlt"; }
   .clocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .assets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -187,3 +188,25 @@ button { font: inherit; color: inherit; }
 .prow { display: grid; grid-template-columns: 120px auto 70px 70px 40px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 11px; color: var(--ink-2); }
 .prow .err { color: var(--bad); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { .prow { grid-template-columns: 1fr auto; } .prow > span:nth-child(n+3) { display: none; } .prow .err { display: block; grid-column: 1 / -1; } }
+
+/* events & news (phase 7) */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.filters button { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 9px; font: 600 10px var(--mono); letter-spacing: .6px; color: var(--ink-2); cursor: pointer; }
+.filters button.on { color: var(--info); border-color: var(--info); }
+.evt.past { opacity: .55; }
+.evt .when { font: 10px var(--mono); color: var(--ink-3); }
+.fa { direction: rtl; text-align: right; font-family: 'Vazirmatn', var(--sans); font-size: 12.5px; line-height: 1.75; color: var(--ink-2); margin-top: 6px; }
+.fa b { color: var(--ink); font-weight: 600; }
+.fx { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; direction: ltr; }
+.fx span { font: 600 10px var(--mono); padding: 3px 7px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line); }
+.fx .lab { background: none; border: 0; color: var(--ink-3); padding-inline: 0; }
+.list-scroll { max-height: 560px; overflow-y: auto; padding-inline-end: 4px; }
+.nitem { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.nitem:last-child { border-bottom: 0; }
+.nitem a { color: var(--ink); text-decoration: none; font-weight: 600; }
+.nitem a:hover { color: var(--info); }
+.nitem .meta { font: 10px var(--mono); color: var(--ink-3); margin-top: 3px; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; direction: rtl; }
+.tags span { font: 11px 'Vazirmatn', var(--sans); padding: 2px 8px; border-radius: 999px; background: rgba(57,135,229,.12); color: var(--info); }
+.news-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+@media (max-width: 1024px) { .news-grid { grid-template-columns: 1fr; } }

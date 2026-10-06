@@ -3,8 +3,8 @@ import { zonedParts, serverParts, zoneOffsetMinutes, serverOffsetMinutes, zonedT
 import { sessionStates, timelineIntervals } from './engines/session-engine.js';
 import { t, getLang, setLang } from './i18n.js';
 import { computeCondition, scoreSession } from './core/condition-engine.js';
-import { DEMO_EVENTS, DEMO_DRIVERS } from './demo-data.js';
-import { scoreVolatility } from './core/condition-engine.js';
+import { DEMO_DRIVERS } from './demo-data.js';
+import { scoreVolatility, scoreNewsRisk } from './core/condition-engine.js';
 import { loadSnapshot, displayStatus, fmtAge } from './data-client.js';
 
 let SNAP = null, SNAP_ERR = 'loading';
@@ -58,10 +58,24 @@ function assetFactors(a, now) {
   };
 }
 
+function calStatus(now) {
+  const c = SNAP && SNAP.calendar;
+  if (!c || !c.fetchedAt) return 'UNAVAILABLE';
+  return displayStatus(c.status, c.fetchedAt, now, { liveMaxAgeMs: 6 * 3600000, staleAfterMs: 26 * 3600000 });
+}
+/** News-risk factor for one asset from calendar events relevant to it. */
+function newsFactor(sym, now) {
+  const st = calStatus(now);
+  if (st === 'UNAVAILABLE' || st === 'STALE') return {};
+  const ev = SNAP.calendar.events.filter((e) => e.impact !== 'LOW' && e.kb && e.kb.relevance.includes(sym)).map((e) => ({ time: e.ts, impact: e.impact, title: `${e.ccy} ${e.title}` }));
+  const r = scoreNewsRisk(ev, now);
+  return { news: { value: r.value, status: st, note: r.note } };
+}
+
 function renderCondition(ss) {
   const sess = scoreSession(ss);
   const now = Date.now();
-  const factors = { session: { value: sess.value, status: 'LIVE', note: sess.note }, ...assetFactors(SNAP && SNAP.assets[CONFIG.data.primaryAsset], now) };
+  const factors = { session: { value: sess.value, status: 'LIVE', note: sess.note }, ...assetFactors(SNAP && SNAP.assets[CONFIG.data.primaryAsset], now), ...newsFactor(CONFIG.data.primaryAsset, now) };
   const r = computeCondition(factors, CONFIG.conditionWeights, CONFIG.conditionBands,
     { minCoverage: CONFIG.minCoverage, vetoes: CONFIG.conditionVetoes });
   const v = r.score ?? 0;
@@ -112,7 +126,7 @@ function renderAssets() {
     if (!a || a.price == null) return `<article class="card asset">${head}<div class="px num" style="color:var(--ink-3)">--</div><p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p></article>`;
     const cls = a.changePct > 0 ? 'up' : a.changePct < 0 ? 'down' : 'flat';
     const tr = a.bias > 0 ? '▲ BULLISH' : a.bias < 0 ? '▼ BEARISH' : '◆ NEUTRAL';
-    const cond = assetCondition(a, now);
+    const cond = assetCondition(a, now, sym);
     return `<article class="card asset">${head}
       <div class="px num">${a.price.toFixed(dp)}</div><div class="chg ${cls} num">${a.changePct > 0 ? '▲ +' : a.changePct < 0 ? '▼ ' : ''}${a.changePct == null ? '--' : a.changePct.toFixed(2)}% <span style="color:var(--ink-3)">24h</span></div>
       ${a.spark && a.spark.length > 2 ? sparkSvg(a.spark, a.bias) : ''}
@@ -128,10 +142,10 @@ function renderAssets() {
 }
 
 let LAST_SS = null;
-function assetCondition(a, now) {
+function assetCondition(a, now, sym) {
   if (!LAST_SS) return null;
   const s = scoreSession(LAST_SS);
-  return computeCondition({ session: { value: s.value, status: 'LIVE' }, ...assetFactors(a, now) }, CONFIG.conditionWeights, CONFIG.conditionBands, { minCoverage: CONFIG.minCoverage }).score;
+  return computeCondition({ session: { value: s.value, status: 'LIVE' }, ...assetFactors(a, now), ...newsFactor(sym, now) }, CONFIG.conditionWeights, CONFIG.conditionBands, { minCoverage: CONFIG.minCoverage }).score;
 }
 
 function renderTimeline(now) {
@@ -153,13 +167,58 @@ function renderDrivers() {
       <span class="v ${d.dir > 0 ? 'up' : d.dir < 0 ? 'down' : 'flat'}">${d.dir > 0 ? '▲' : d.dir < 0 ? '▼' : '◆'} ${esc(d.value)}</span></div>`).join('')}`;
 }
 
+const FILTERS = ['ALL', 'HIGH', 'MEDIUM', 'USD', 'EUR', 'GBP', 'JPY', 'GOLD', 'OIL'];
+let evFilter = 'HIGH';
+try { const v = localStorage.getItem('tos.evf'); if (FILTERS.includes(v)) evFilter = v; } catch { /* ignore */ }
+const ARROW = (v) => (v > 0 ? '<b class="up">↑</b>' : v < 0 ? '<b class="down">↓</b>' : '');
+
+function eventPasses(e) {
+  if (evFilter === 'ALL') return e.impact !== 'LOW' || (e.kb && e.kb.relevance.length);
+  if (evFilter === 'HIGH' || evFilter === 'MEDIUM') return e.impact === evFilter;
+  if (evFilter === 'GOLD') return e.kb && e.kb.relevance.includes('XAUUSD');
+  if (evFilter === 'OIL') return e.kb && e.kb.relevance.includes('BRENT');
+  return e.ccy === evFilter;
+}
+
 function renderEvents() {
-  $('events').innerHTML = `<div class="card-h"><h2>${t('events')}</h2>${pill('demo', t('demo'))}</div>
-    ${DEMO_EVENTS.map((e) => `<div class="evt"><span class="tm num">${e.time}</span><div>
-      <div><span class="imp ${e.impact}">${e.impact}</span> <span class="mono" style="color:var(--ink-3);font-size:11px">${e.ccy}</span></div>
+  const now = Date.now(), st = calStatus(now), tz = CONFIG.timelineTz;
+  const c = SNAP && SNAP.calendar;
+  const head = `<div class="card-h"><h2>${t('events')}</h2>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>
+    <div class="filters">${FILTERS.map((f) => `<button type="button" data-evf="${f}" class="${f === evFilter ? 'on' : ''}">${f}</button>`).join('')}</div>`;
+  if (!c || !c.events) { $('events').innerHTML = `${head}<p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p>`; return; }
+  const list = c.events.filter((e) => e.ts >= now - 2 * 3600000 && e.ts <= now + 48 * 3600000 && eventPasses(e)).slice(0, 30);
+  const day = (ts) => { const p = zonedParts(new Date(ts), tz); return `${DAYS[p.weekday]} ${pad2(p.day)} ${MONTHS[p.month - 1]}`; };
+  $('events').innerHTML = `${head}<div class="list-scroll">${list.length ? list.map((e) => {
+    const k = e.kb, dm = Math.round((e.ts - now) / 60000);
+    const when = dm >= 0 ? (dm < 120 ? `in ${dm}m` : `in ${fmtDuration(e.ts - now)}`) : `${-dm}m ago`;
+    const fx = k && !k.noDirection ? Object.entries(k.effects).filter(([, v]) => v).map(([s2, v]) => `<span>${s2} ${ARROW(v)}</span>`).join('') : '';
+    return `<div class="evt ${e.ts < now ? 'past' : ''}"><div><div class="tm num">${hm(new Date(e.ts), tz)}</div><div class="when">${day(e.ts)}</div><div class="when">${when}</div></div><div>
+      <div><span class="imp ${e.impact}">${e.impact}</span> <span class="mono" style="color:var(--ink-3);font-size:11px">${esc(e.ccy)}</span></div>
       <div class="ttl">${esc(e.title)}</div>
-      <div class="meta"><span>${t('actual')} ${e.actual ?? '--'}</span><span>${t('forecast')} ${e.forecast ?? '--'}</span><span>${t('previous')} ${e.previous ?? '--'}</span></div>
-      <div class="meta"><span>${t('potential')}: ${e.rel.join(' · ')}</span></div></div></div>`).join('')}`;
+      <div class="meta"><span>${t('actual')} ${esc(e.actual ?? '--')}</span><span>${t('forecast')} ${esc(e.forecast ?? '--')}</span><span>${t('previous')} ${esc(e.previous ?? '--')}</span></div>
+      ${k ? `<div class="fa"><b>${esc(k.nameFa)} · ${esc(k.ccyFa)}</b> — ${esc(k.whyFa)}<br>▲ ${esc(k.ifHigherFa)}<br>▼ ${esc(k.ifLowerFa)}</div>
+        ${fx ? `<div class="fx"><span class="lab">IF ABOVE FORECAST:</span>${fx}</div>` : ''}` : ''}
+    </div></div>`;
+  }).join('') : `<p class="demo-note" style="color:var(--ink-3)">—</p>`}</div>
+  <p class="demo-note" style="color:var(--ink-3)">${esc(c.source || '')} · ${t('age')} ${fmtAge(c.fetchedAt ? now - c.fetchedAt : null)} · ${esc(tz)} · <span class="fa" style="display:inline">تفسیر قاعده‌محور و احتمالی است، نه پیش‌بینی.</span></p>`;
+}
+
+function renderNews() {
+  const now = Date.now(), n = SNAP && SNAP.news;
+  const st = !n || !n.fetchedAt ? 'UNAVAILABLE' : displayStatus(n.status, n.fetchedAt, now, { liveMaxAgeMs: 3600000, staleAfterMs: 6 * 3600000 });
+  const head = `<div class="card-h"><h2>${t('newsTab')}</h2>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>`;
+  if (!n || !n.items || !n.items.length) { $('news').innerHTML = `${head}<p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p>`; return; }
+  $('news').innerHTML = `${head}<div class="news-grid">${n.items.map((x) => `<div class="nitem">
+      <a href="${esc(/^https?:\/\//.test(x.url) ? x.url : '#')}" target="_blank" rel="noopener noreferrer">${esc(x.title)}</a>
+      <div class="meta">${esc(x.source)} · ${fmtAge(now - x.ts)} · ${x.kb.relevance.join(' · ')}</div>
+      <div class="tags">${x.kb.topicsFa.map((tp) => `<span>${esc(tp)}</span>`).join('')}</div>
+      <div class="fa">${x.kb.notesFa.map(esc).join('<br>')}</div></div>`).join('')}</div>
+    <p class="demo-note" style="color:var(--ink-3)">${esc(n.source || '')} · ${t('age')} ${fmtAge(now - n.fetchedAt)} · <span class="fa" style="display:inline">تیتر اصلی به زبان منبع است؛ برچسب و توضیح فارسی خودکار و قاعده‌محور است.</span></p>`;
+}
+
+function listCell(x, cfg) {
+  const st = !x || !x.fetchedAt ? 'UNAVAILABLE' : displayStatus(x.status, x.fetchedAt, Date.now(), cfg);
+  return [pill(st.toLowerCase(), t(st.toLowerCase())), x && x.source ? `${x.source} · ${fmtAge(Date.now() - x.fetchedAt)}` : (SNAP_ERR || '')];
 }
 
 function renderHealth() {
@@ -171,25 +230,29 @@ function renderHealth() {
   const cells = [
     [t('timeEngine'), pill('live', t('live')), 'Intl / IANA · ' + t('local')],
     [t('price'), pill(priceSt.toLowerCase(), t(priceSt.toLowerCase())), SNAP ? `${t('age')} ${fmtAge(age)}` : (SNAP_ERR || '')],
-    [t('newsTab'), pill('demo', t('demo')), t('notConfigured')],
-    [t('calendar'), pill('demo', t('demo')), t('notConfigured')],
+    [t('newsTab'), ...listCell(SNAP && SNAP.news, { liveMaxAgeMs: 3600000, staleAfterMs: 6 * 3600000 })],
+    [t('calendar'), ...listCell(SNAP && SNAP.calendar, { liveMaxAgeMs: 6 * 3600000, staleAfterMs: 26 * 3600000 })],
     [t('volatility'), pill(priceSt.toLowerCase(), t(priceSt.toLowerCase())), 'ATR · 15m'],
     ['NETWORK', online ? pill('live', t('online')) : pill('offline', t('offline')), online ? 'navigator.onLine' : 'cached shell'],
   ];
   $('health').innerHTML = `<div class="card-h"><h2>${t('dataHealth')}</h2></div>
     <div class="health-grid">${cells.map(([k, p, d]) => `<div class="hcell"><div class="k">${esc(k)}</div>${p}<div class="d">${esc(d)}</div></div>`).join('')}</div>
-    ${prov.length ? `<div class="prov"><div class="k">PRICE PROVIDERS</div>${prov.map((p) => `<div class="prow mono"><span>${p.priority}. ${esc(p.name)}</span>
+    ${provTable('PRICE', prov)}${provTable('CALENDAR', (SNAP && SNAP.health.calendar) || [])}${provTable('NEWS', (SNAP && SNAP.health.news) || [])}`;
+  $('net-pill').className = `pill ${online ? 'live' : 'offline'}`;
+  $('net-pill').textContent = `${t('system')} ${online ? t('online') : t('offline')}`;
+}
+
+function provTable(label, prov) {
+  return `${prov.length ? `<div class="prov"><div class="k">${label} PROVIDERS</div>${prov.map((p) => `<div class="prow mono"><span>${p.priority}. ${esc(p.name)}</span>
       ${pill(p.circuit === 'OPEN' ? 'down' : p.status === 'LIVE' ? 'live' : p.status === 'DOWN' ? 'down' : 'muted', p.circuit === 'OPEN' ? 'CIRCUIT OPEN' : p.status)}
       <span>${p.latencyMs != null ? p.latencyMs + 'ms' : '--'}</span><span>${t('fails')} ${p.failures}</span><span>${p.score ?? '--'}</span>
       <span class="err">${esc(p.lastError || '')}</span></div>`).join('')}</div>` : ''}`;
-  $('net-pill').className = `pill ${online ? 'live' : 'offline'}`;
-  $('net-pill').textContent = `${t('system')} ${online ? t('online') : t('offline')}`;
 }
 
 async function refreshData() {
   const r = await loadSnapshot(CONFIG.data.snapshotUrl);
   if (r.ok) { SNAP = r.snap; SNAP_ERR = null; } else SNAP_ERR = r.error;   // keep the previous snapshot (its age keeps growing)
-  safe('assets', renderAssets); safe('health', renderHealth); lastMinute = -1; tick();
+  safe('assets', renderAssets); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth); lastMinute = -1; tick();
 }
 
 function staticText() {
@@ -208,7 +271,7 @@ function tick() {
 }
 function renderAll() {
   lastMinute = -1; staticText();
-  safe('assets', renderAssets); safe('drivers', renderDrivers); safe('events', renderEvents); safe('health', renderHealth);
+  safe('assets', renderAssets); safe('drivers', renderDrivers); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth);
   tick();
 }
 
@@ -228,6 +291,11 @@ $('lang-btn').addEventListener('click', () => { setLang(getLang() === 'fa' ? 'en
 window.addEventListener('online', () => safe('health', renderHealth));
 window.addEventListener('offline', () => safe('health', renderHealth));
 setupTabs();
+$('events').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-evf]'); if (!b) return;
+  evFilter = b.dataset.evf; try { localStorage.setItem('tos.evf', evFilter); } catch { /* ignore */ }
+  safe('events', renderEvents);
+});
 renderAll();
 setInterval(tick, 1000);
 refreshData();

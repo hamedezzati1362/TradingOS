@@ -51,3 +51,10 @@
 - فقط Provider اصلی LIVE است؛ Yahoo = FALLBACK. در UI: سن > ۲۵ دقیقه ← CACHE، > ۴۵ دقیقه ← STALE (از تصمیم حذف)
 - موتورها: ATR و پرسنتایل آن، RSI، Efficiency Ratio، سوینگ فرکتالی، HH/HL/LH/LL، BOS، CHoCH، Regime، Momentum
 - کارت وضعیت بازار از XAUUSD تغذیه می‌شود؛ Liquidity/News/Spread تا فاز ۷ «بدون داده» (نه DEMO)
+
+## فاز ۷ — اخبار و تقویم اقتصادی با تفسیر فارسی
+- تقویم: ۱) ForexFactory (هفته جاری + بعد، بدون کلید؛ Actual ندارد) ۲) Finnhub Calendar ← LKG
+- اخبار: ۱) Finnhub News ۲) Google News RSS ← LKG؛ حذف تکراری، فیلتر «خبر بازار» برای حذف تیترهای بی‌ربط
+- `core/impact-kb.js`: پایگاه دانش قاعده‌محور؛ برای هر رویداد: نوع، دلیل اهمیت، سناریوی «بالاتر/پایین‌تر از پیش‌بینی» و جهت احتمالی هر نماد
+- عامل News Risk واقعی شد (رویدادهای مرتبط با هر نماد) و Veto خبر فعال است
+- فیلترهای تقویم: ALL/HIGH/MEDIUM/USD/EUR/GBP/JPY/GOLD/OIL

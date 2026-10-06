@@ -8,6 +8,9 @@ import { analyse } from '../public/assets/js/core/market-engines.js';
 import { twelveData, yahoo } from './providers.mjs';
 import { SOURCES } from './sources.config.mjs';
 import { validateCandles } from './validate.mjs';
+import { forexFactory, finnhubCalendar, finnhubNews, googleNews } from './news-providers.mjs';
+import { validateEventList, dedupeEvents } from '../public/assets/js/core/validators.js';
+import { explainEvent, explainHeadline } from '../public/assets/js/core/impact-kb.js';
 
 const [out, prevUrl] = process.argv.slice(2);
 const log = [];
@@ -21,6 +24,7 @@ async function loadPrevious() {
 const prev = await loadPrevious();
 const cache = new MemoryCache();
 if (prev && prev.raw) for (const [k, v] of Object.entries(prev.raw)) cache.set(k, v);
+if (prev && prev.rawLists) for (const [k, v] of Object.entries(prev.rawLists)) cache.set(k, v);
 L('info', prev ? `previous snapshot loaded (${prev.generatedAt})` : 'no previous snapshot (cold start)');
 
 const providers = [twelveData(process.env.TWELVEDATA_API_KEY, SOURCES.twelveData), yahoo(SOURCES.yahoo)].filter((p) => {
@@ -41,7 +45,35 @@ for (const sym of SOURCES.assets) {
   if (providers[0] && providers[0].name === 'TwelveData') await new Promise((res) => setTimeout(res, 8000)); // free tier: 8 req/min
 }
 
-const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, health: { price: pm.health() }, log: log.slice(-60), raw };
+// ---- Economic calendar ----
+const listValidator = (min) => (d) => { const v = validateEventList(d, { minValidRatio: 0.8 }); return v.ok && v.items.length >= min ? { ok: true, value: v.items } : { ok: false, reason: v.reason || `only ${v.items ? v.items.length : 0} items` }; };
+const calPm = new ProviderManager({ kind: 'calendar', cache, providers: [forexFactory(), finnhubCalendar(process.env.FINNHUB_API_KEY)].filter((p) => p.enabled !== false),
+  validate: listValidator(5), staleAfterMs: 24 * 3600000, log: L, retries: 1, backoffMs: 1500 });
+const cal = await calPm.get('calendar');
+let calendar = { status: cal.status, source: cal.source, fetchedAt: cal.fetchedAt, events: [] };
+if (cal.data) {
+  const nowMs = Date.now();
+  const d = dedupeEvents(cal.data.filter((e) => e.ts >= nowMs - 12 * 3600000 && e.ts <= nowMs + 7 * 86400000).sort((a, b) => a.ts - b.ts));
+  if (d.removed) L('info', `calendar: ${d.removed} duplicate events removed`);
+  calendar.events = d.items.map((e) => ({ ...e, kb: explainEvent(e) }));
+}
+
+// ---- News headlines ----
+const newsPm = new ProviderManager({ kind: 'news', cache, providers: [finnhubNews(process.env.FINNHUB_API_KEY), googleNews()].filter((p) => p.enabled !== false),
+  validate: listValidator(3), staleAfterMs: 6 * 3600000, log: L, retries: 1, backoffMs: 1500 });
+const nr = await newsPm.get('news');
+let news = { status: nr.status, source: nr.source, fetchedAt: nr.fetchedAt, items: [] };
+if (nr.data) {
+  const fresh = nr.data.filter((n) => n.ts >= Date.now() - 48 * 3600000).sort((a, b) => b.ts - a.ts);
+  const d = dedupeEvents(fresh.map((n) => ({ ...n, ccy: '' })), { windowMs: 12 * 3600000 });
+  if (d.removed) L('info', `news: ${d.removed} duplicate headlines removed`);
+  news.items = d.items.map((n) => ({ title: n.title, ts: n.ts, url: n.url, source: n.source, kb: explainHeadline(`${n.title} ${n.summary || ''}`) }))
+    .filter((n) => n.kb).slice(0, 20);
+}
+
+const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news,
+  health: { price: pm.health(), calendar: calPm.health(), news: newsPm.health() }, log: log.slice(-80), raw,
+  rawLists: Object.fromEntries(['calendar', 'news'].map((k) => [k, cache.get(k)]).filter(([, v]) => v)) };
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(snapshot));
 L('info', `snapshot written: ${Object.values(assets).map((a) => a.status).join(',')}`);
