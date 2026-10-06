@@ -19,6 +19,18 @@ for (const [w, h] of [[390, 844], [768, 1024], [1920, 1080]]) {
     if (!ok) failed++;
     console.log(`${ok ? 'PASS' : 'FAIL'} ${w}px ${lang}: overflow=${ov} errors=${JSON.stringify(errs)} panelErrors=${panels}`);
     await page.screenshot({ path: `${shots}/ui_${w}_${lang}.png`, fullPage: true });
+    if (lang === 'en' && await page.$('button[data-chart]')) {          // chart modal + timeframe switch
+      await page.click('button[data-tf="4h"]'); await page.waitForTimeout(800);
+      await page.click('button[data-chart]'); await page.waitForTimeout(2500);
+      const canvases = await page.$$eval('#mchart canvas', (x) => x.length);
+      const rows = await page.$$eval('.ttab tr', (x) => x.length);
+      const ovm = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      await page.screenshot({ path: `${shots}/chart_${w}.png` });
+      const okc = canvases > 0 && rows >= 20 && ovm <= 0;
+      if (!okc) failed++;
+      console.log(`${okc ? 'PASS' : 'FAIL'} ${w}px chart modal: canvases=${canvases} indicatorRows=${rows} overflow=${ovm}`);
+      await page.keyboard.press('Escape');
+    }
     if (w === 390 && lang === 'en') {       // Test 6: offline -> clock & sessions keep ticking
       await ctx.setOffline(true); await page.evaluate(() => window.dispatchEvent(new Event('offline')));
       const t1 = await page.textContent('.clock .time'); await page.waitForTimeout(2100); const t2 = await page.textContent('.clock .time');

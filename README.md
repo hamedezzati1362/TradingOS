@@ -8,4 +8,4 @@ Live site: https://hamedezzati1362.github.io/tradingos/
 - `node tests/ui.check.mjs <url> <dir>` — responsive/console/offline checks (needs Playwright)
 - Architecture: `docs/ARCHITECTURE_FA.md`
 
-Status: Phase 1–9. All dashboard data is real: prices, structure, regime, key levels, ADR, economic calendar and news (Persian impact notes), gold & dollar focus, macro drivers.
+Status: Phase 1–10. Real data everywhere + TradingView-style indicator ratings per timeframe and full-screen charts with futures volume.

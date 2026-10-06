@@ -5,8 +5,25 @@ import { t, getLang, setLang } from './i18n.js';
 import { computeCondition, scoreSession } from './core/condition-engine.js';
 import { scoreVolatility, scoreNewsRisk } from './core/condition-engine.js';
 import { loadSnapshot, displayStatus, fmtAge } from './data-client.js';
+import { technicalRating } from './core/technicals.js';
 
 let SNAP = null, SNAP_ERR = 'loading';
+const TFS = ['15m', '1h', '4h', '1d'];
+let selTf = '1h';
+try { const v = localStorage.getItem('tos.tf'); if (TFS.includes(v)) selTf = v; } catch { /* ignore */ }
+const FILES = new Map();   // `${sym}_${tf}` -> { file, rating, loadedAt }
+async function loadCandleFile(sym, tf) {
+  const key = `${sym}_${tf}`, hit = FILES.get(key);
+  if (hit && Date.now() - hit.loadedAt < 5 * 60000) return hit;
+  try {
+    const r = await fetch(`data/candles/${key}.json`, { cache: 'no-store' });
+    if (!r.ok) return hit || null;
+    const file = await r.json();
+    const rating = technicalRating(file.candles.map(([t, o, h, l, c]) => ({ t, o, h, l, c })));
+    const v = { file, rating, loadedAt: Date.now() }; FILES.set(key, v); return v;
+  } catch { return hit || null; }
+}
+async function loadTf(tf) { await Promise.all(CONFIG.assets.map((s) => loadCandleFile(s, tf))); safe('assets', renderAssets); }
 const dstatus = (a, now = Date.now()) => displayStatus(a && a.status, a && a.fetchedAt, now, CONFIG.data);
 
 const $ = (id) => document.getElementById(id);
@@ -115,26 +132,40 @@ function sparkSvg(pts, dir) {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
+const RCOL = { 'STRONG BUY': 'var(--up)', BUY: 'var(--up)', NEUTRAL: 'var(--ink-2)', SELL: 'var(--down)', 'STRONG SELL': 'var(--down)' };
+const ACT = (a) => `<span class="act ${a.toLowerCase()}">${t('a_' + a.toLowerCase())}</span>`;
+const KEY_IND = ['RSI (14)', 'MACD (12,26,9)', 'Stochastic %K (14,3,3)', 'ADX (14)', 'CCI (20)', 'EMA (50)', 'EMA (200)'];
+function ratingMeter(score) {
+  const pos = Math.round(((score + 1) / 2) * 100);
+  return `<div class="rmeter"><span style="left:${pos}%"></span></div><div class="rscale"><span>S.SELL</span><span>SELL</span><span>NEUTRAL</span><span>BUY</span><span>S.BUY</span></div>`;
+}
+function techBlock(sym, a) {
+  const f = FILES.get(`${sym}_${selTf}`);
+  const sum = f ? { ...f.rating.summary, osc: f.rating.osc, ma: f.rating.ma } : a.tech && a.tech[selTf] ? { ...a.tech[selTf].summary, osc: a.tech[selTf].osc, ma: a.tech[selTf].ma } : null;
+  if (!sum) return `<p class="demo-note" style="color:var(--ink-3)">${t('noData')} · ${selTf}</p>`;
+  const rows = f ? KEY_IND.map((n) => [...f.rating.oscillators, ...f.rating.movingAverages].find((x) => x.name === n)).filter(Boolean) : [];
+  return `<div class="tech"><div class="tsum"><span class="tf mono">${selTf.toUpperCase()}</span><b style="color:${RCOL[sum.label]}">${t('r_' + sum.label.replace(' ', '_').toLowerCase())}</b></div>
+    ${ratingMeter(sum.score)}
+    <div class="tcount mono"><span>OSC <b class="up">${sum.osc.BUY}</b>/<b>${sum.osc.NEUTRAL}</b>/<b class="down">${sum.osc.SELL}</b></span><span>MA <b class="up">${sum.ma.BUY}</b>/<b>${sum.ma.NEUTRAL}</b>/<b class="down">${sum.ma.SELL}</b></span></div>
+    ${rows.length ? `<div class="tind">${rows.map((x) => `<span class="n">${esc(x.name.replace(/ \(.*\)/, ''))}${x.name.includes('EMA') ? ' ' + x.name.match(/\d+/)[0] : ''}</span>${ACT(x.action)}`).join('')}</div>` : ''}</div>`;
+}
+
 function renderAssets() {
   const now = Date.now();
-  $('assets').innerHTML = CONFIG.assets.map((sym) => {
+  $('assets').innerHTML = `<div class="tfbar"><span class="k">${t('timeframe')}</span>${TFS.map((x) => `<button type="button" data-tf="${x}" class="${x === selTf ? 'on' : ''}">${x.toUpperCase()}</button>`).join('')}<span class="demo-note" style="margin:0;color:var(--ink-3)">${t('techNote')}</span></div>` + CONFIG.assets.map((sym) => {
     const a = SNAP && SNAP.assets[sym];
     const st = dstatus(a, now);
     const dp = (CONFIG.assetMeta[sym] || {}).dp ?? 2;
-    const head = `<div class="row1"><span class="sym">${sym}</span>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>`;
+    const head = `<div class="row1"><span class="sym">${sym}</span><span style="display:flex;gap:6px;align-items:center">${pill(st.toLowerCase(), t(st.toLowerCase()))}<button type="button" class="chart-btn" data-chart="${sym}" aria-label="chart">⤢</button></span></div>`;
     if (!a || a.price == null) return `<article class="card asset">${head}<div class="px num" style="color:var(--ink-3)">--</div><p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p></article>`;
     const cls = a.changePct > 0 ? 'up' : a.changePct < 0 ? 'down' : 'flat';
     const tr = a.bias > 0 ? '▲ BULLISH' : a.bias < 0 ? '▼ BEARISH' : '◆ NEUTRAL';
     const cond = assetCondition(a, now, sym);
     return `<article class="card asset">${head}
       <div class="px num">${a.price.toFixed(dp)}</div><div class="chg ${cls} num">${a.changePct > 0 ? '▲ +' : a.changePct < 0 ? '▼ ' : ''}${a.changePct == null ? '--' : a.changePct.toFixed(2)}% <span style="color:var(--ink-3)">24h</span></div>
-      ${a.spark && a.spark.length > 2 ? sparkSvg(a.spark, a.bias) : ''}
-      <div class="kv"><span class="k">${t('trend')}</span><span class="v ${a.bias > 0 ? 'up' : a.bias < 0 ? 'down' : 'flat'}">${tr}</span>
-        <span class="k">${t('structure')}</span><span class="v">${esc(a.structure)}</span>
-        <span class="k">${t('momentum')}</span><span class="meter" title="${a.momentum}"><i style="width:${a.momentum ?? 0}%"></i></span>
-        <span class="k">${t('volatility')}</span><span class="meter" title="ATR p${a.atrPct}"><i style="width:${a.atrPct ?? 0}%;background:var(--warn)"></i></span>
-        <span class="k">${t('regime')}</span><span class="v">${esc(a.regime)}</span>
-        <span class="k">RSI</span><span class="v">${a.rsi ?? '--'}</span></div>
+      ${techBlock(sym, a)}
+      <div class="kv"><span class="k">${t('structure')}</span><span class="v">${esc(a.structure)} · 15m</span>
+        <span class="k">${t('regime')}</span><span class="v">${esc(a.regime)}</span></div>
       ${a.levels ? `<div class="mini-lv"><span class="k">ADR</span><span class="v" style="color:${adrColor(a.levels.adrPct)}">${a.levels.adrPct ?? '--'}%</span>
         <span class="k">▲ ${esc(a.levels.above ? a.levels.above.name : '--')}</span><span class="v">${a.levels.above ? fmtDist(a.levels.above.price, a, dp) : '--'}</span>
         <span class="k">▼ ${esc(a.levels.below ? a.levels.below.name : '--')}</span><span class="v">${a.levels.below ? fmtDist(a.levels.below.price, a, dp) : '--'}</span></div>` : ''}
@@ -407,6 +438,51 @@ $('lang-btn').addEventListener('click', () => { setLang(getLang() === 'fa' ? 'en
 window.addEventListener('online', () => safe('health', renderHealth));
 window.addEventListener('offline', () => safe('health', renderHealth));
 setupTabs();
+$('assets').addEventListener('click', (e) => {
+  const tb = e.target.closest('button[data-tf]');
+  if (tb) { selTf = tb.dataset.tf; try { localStorage.setItem('tos.tf', selTf); } catch { /* ignore */ } safe('assets', renderAssets); loadTf(selTf); return; }
+  const cb = e.target.closest('button[data-chart]'); if (cb) openChart(cb.dataset.chart);
+});
+
+let modalSym = null, modalBB = false;
+async function openChart(sym) {
+  modalSym = sym;
+  const m = $('modal'); m.hidden = false; document.body.classList.add('modal-open');
+  await renderModal();
+}
+function closeChart() { $('modal').hidden = true; document.body.classList.remove('modal-open'); import('./chart-view.js').then((cv) => cv.destroyChart()).catch(() => {}); }
+async function renderModal() {
+  const sym = modalSym, dp = (CONFIG.assetMeta[sym] || {}).dp ?? 2;
+  const m = $('modal');
+  m.innerHTML = `<div class="mwrap"><div class="mhead"><b class="mono">${sym}</b>
+    <div class="filters" style="margin:0">${TFS.map((x) => `<button type="button" data-mtf="${x}" class="${x === selTf ? 'on' : ''}">${x.toUpperCase()}</button>`).join('')}
+    <button type="button" data-bb class="${modalBB ? 'on' : ''}">BB</button></div>
+    <button type="button" class="mclose" data-close aria-label="close">✕</button></div>
+    <div class="mbody"><div class="mchart" id="mchart"><p class="demo-note" style="padding:16px;color:var(--ink-3)">loading…</p></div><div class="mtable" id="mtable"></div></div>
+    <div class="mfoot demo-note" id="mfoot"></div></div>`;
+  const f = await loadCandleFile(sym, selTf);
+  if (!f) { $('mchart').innerHTML = `<p class="demo-note" style="padding:16px">${t('unavailable')}</p>`; return; }
+  try {
+    const cv = await import('./chart-view.js');
+    $('mchart').innerHTML = '';
+    await cv.drawChart($('mchart'), f.file, { tz: CONFIG.timelineTz, dp, showBB: modalBB });
+  } catch (err) { console.warn('[chart]', err); $('mchart').innerHTML = `<p class="demo-note" style="padding:16px">chart unavailable</p>`; }
+  const r = f.rating;
+  const tbl = (title, rows, g) => `<div class="tblk"><div class="tsum"><span class="k">${title}</span><b style="color:${RCOL[g.label]}">${t('r_' + g.label.replace(' ', '_').toLowerCase())}</b></div>
+    <div class="tcount mono"><span>${t('a_buy')} <b class="up">${g.BUY}</b></span><span>${t('a_neutral')} <b>${g.NEUTRAL}</b></span><span>${t('a_sell')} <b class="down">${g.SELL}</b></span></div>
+    <table class="ttab">${rows.map((x) => `<tr><td>${esc(x.name)}</td><td class="mono">${Math.abs(x.value) >= 100 ? x.value.toFixed(dp > 2 ? 2 : dp) : x.value.toFixed(Math.max(2, Math.min(dp, 5)))}</td><td>${ACT(x.action)}</td></tr>`).join('')}</table></div>`;
+  $('mtable').innerHTML = `<div class="tblk"><div class="tsum"><span class="k">${t('summary')} · ${selTf.toUpperCase()}</span><b style="color:${RCOL[r.summary.label]};font-size:18px">${t('r_' + r.summary.label.replace(' ', '_').toLowerCase())}</b></div>${ratingMeter(r.summary.score)}</div>
+    ${tbl(t('oscillators'), r.oscillators, r.osc)}${tbl(t('movingAverages'), r.movingAverages, r.ma)}`;
+  const vol = f.file.volume;
+  $('mfoot').innerHTML = `${esc(f.file.source)} · ${fmtAge(Date.now() - f.file.fetchedAt)} · EMA 20/50/200 · Volume: ${vol ? esc(vol.source) + ' (CME/ICE futures)' : '—'} · <span class="fa" style="display:inline">جمع‌بندی اندیکاتورهاست، نه توصیه‌ی معامله.</span>`;
+}
+$('modal').addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]') || e.target === $('modal')) { closeChart(); return; }
+  const tb = e.target.closest('button[data-mtf]'); if (tb) { selTf = tb.dataset.mtf; try { localStorage.setItem('tos.tf', selTf); } catch { /* ignore */ } renderModal(); safe('assets', renderAssets); loadTf(selTf); return; }
+  if (e.target.closest('button[data-bb]')) { modalBB = !modalBB; renderModal(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('modal').hidden) closeChart(); });
+
 function onDay(id) { selDay = id === dayId(Date.now()) ? null : id; safe('focus', renderFocus); safe('events', renderEvents); }
 for (const id of ['focus', 'events']) {
   $(id).addEventListener('click', (e) => { const b = e.target.closest('button[data-day]'); if (b) onDay(b.dataset.day); });
@@ -424,7 +500,8 @@ $('events').addEventListener('click', (e) => {
 });
 renderAll();
 setInterval(tick, 1000);
-refreshData();
+refreshData().then(() => loadTf(selTf));
+setInterval(() => refreshData().then(() => { FILES.clear(); loadTf(selTf); }), CONFIG.data.refreshMs * 5);
 setInterval(refreshData, CONFIG.data.refreshMs);
 setInterval(() => { safe('assets', renderAssets); safe('health', renderHealth); }, 30000);
 

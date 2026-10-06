@@ -2,9 +2,10 @@
 // and writes public/data/snapshot.json. Previous published snapshot = last-known-good cache.
 // Usage: node collector/collect.mjs <outFile> [previousSnapshotUrl]
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ProviderManager, MemoryCache, redact } from '../public/assets/js/core/provider-manager.js';
 import { analyse, keyLevels } from '../public/assets/js/core/market-engines.js';
+import { technicalRating, aggregate } from '../public/assets/js/core/technicals.js';
 import { twelveData, yahoo } from './providers.mjs';
 import { SOURCES } from './sources.config.mjs';
 import { validateCandles } from './validate.mjs';
@@ -22,6 +23,25 @@ async function loadPrevious() {
   try { const r = await fetch(prevUrl, { cache: 'no-store' }); if (!r.ok) return null; return await r.json(); } catch { return null; }
 }
 
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+const candleDir = join(dirname(out), 'candles');
+mkdirSync(candleDir, { recursive: true });
+function writeCandleFile(sym, tf, obj) { writeFileSync(join(candleDir, `${sym}_${tf}.json`), JSON.stringify(obj)); }
+
+// Real exchange volume from futures (Yahoo, keyless). Separate failover chain: Yahoo -> cached volume.
+const volPm = new ProviderManager({ kind: 'volume', cache: new MemoryCache(), providers: [yahoo(SOURCES.volume, 1)], validate: (d) => (d && d.candles && d.candles.length > 20 ? { ok: true } : { ok: false, reason: 'no volume bars' }), log: L, retries: 1, backoffMs: 1000 });
+const volCache = new Map();
+async function volumeFor(sym, tf) {
+  const interval = { '15m': '15min', '1h': '1h', '4h': '1h', '1d': '1day' }[tf];
+  const key = `${sym}:${interval}`;
+  if (!volCache.has(key)) volCache.set(key, await volPm.get(key, { interval }));
+  const r = volCache.get(key);
+  if (!r.data) return null;
+  let bars = r.data.candles.map((x) => ({ t: x.t, o: x.o, h: x.h, l: x.l, c: x.c, v: x.v }));
+  if (tf === '4h') bars = aggregate(bars, 4 * 3600000);
+  return { source: `${r.source} ${r.data.ref}`, status: r.status, bars: bars.slice(-400).map((x) => [x.t, x.v]) };
+}
+
 const prev = await loadPrevious();
 const cache = new MemoryCache();
 if (prev && prev.raw) for (const [k, v] of Object.entries(prev.raw)) cache.set(k.startsWith('macro:') ? k.slice(6) : k, v);
@@ -36,23 +56,38 @@ const pm = new ProviderManager({ kind: 'price', providers, cache, validate: vali
 
 const assets = {}, raw = {};
 for (const sym of SOURCES.assets) {
-  // Daily candles change slowly: refresh every 6h, otherwise reuse the cached set (saves API credits).
-  const dkey = `${sym}:1day`, dc = cache.get(dkey);
-  let daily = dc ? dc.data.candles : null;
-  if (!dc || Date.now() - dc.fetchedAt > 6 * 3600000) {
-    const dr = await pm.get(dkey, { interval: '1day', bars: 40 });
-    if (dr.data) { daily = dr.data.candles; raw[dkey] = { data: dr.data, source: dr.source, fetchedAt: dr.fetchedAt }; }
-    if (providers[0] && providers[0].name === 'TwelveData') await new Promise((res) => setTimeout(res, 8000));
-  } else raw[dkey] = dc;
+  // Higher timeframes refresh on their own cadence (saves API credits); 15m every run.
+  const tfData = {};
+  for (const [tf, cfg] of Object.entries(SOURCES.timeframes)) {
+    if (tf === '15m') continue;
+    const key = `${sym}:${cfg.interval}`, cached = cache.get(key);
+    if (cached && Date.now() - cached.fetchedAt < cfg.refreshMs && cached.data.candles.length >= (tf === '1d' ? 200 : 300)) { tfData[tf] = cached; raw[key] = cached; continue; }
+    const tr = await pm.get(key, { interval: cfg.interval, bars: cfg.bars });
+    if (tr.data) { tfData[tf] = { data: tr.data, source: tr.source, fetchedAt: tr.fetchedAt, status: tr.status }; raw[key] = { data: tr.data, source: tr.source, fetchedAt: tr.fetchedAt }; }
+    if (tr.source === 'TwelveData') await sleep(8000);
+  }
+  const daily = tfData['1d'] ? tfData['1d'].data.candles : null;
   const r = await pm.get(sym, { interval: '15min', bars: 500 });
   if (r.data) {
     raw[sym] = { data: { ...r.data, candles: r.data.candles.slice(-150) }, source: r.source, fetchedAt: r.fetchedAt };
     let a = null;
     try { a = analyse(r.data.candles); } catch (e) { L('error', `${sym}: analysis failed ${e.message}`); }
     try { if (a) a.levels = keyLevels(r.data.candles, daily); } catch (e) { L('error', `${sym}: levels failed ${e.message}`); }
+    // Per-timeframe candle files for charts + technical rating summary for cards.
+    const series = { '15m': { data: r.data, source: r.source, fetchedAt: r.fetchedAt, status: r.status }, ...tfData };
+    if (series['1h']) series['4h'] = { ...series['1h'], data: { ...series['1h'].data, candles: aggregate(series['1h'].data.candles, 4 * 3600000) } };
+    if (a) a.tech = {};
+    for (const [tf, sd] of Object.entries(series)) {
+      const vol = await volumeFor(sym, tf);
+      const cs = sd.data.candles.slice(-400);
+      try { if (a) { const tr = technicalRating(cs); a.tech[tf] = { summary: tr.summary, osc: tr.osc, ma: tr.ma, status: sd.status || 'CACHE', fetchedAt: sd.fetchedAt, source: sd.source }; } }
+      catch (e) { L('error', `${sym} ${tf}: rating failed ${e.message}`); }
+      writeCandleFile(sym, tf, { sym, tf, source: sd.source, ref: sd.data.ref, fetchedAt: sd.fetchedAt, status: sd.status || 'CACHE',
+        candles: cs.map((x) => [x.t, x.o, x.h, x.l, x.c]), volume: vol });
+    }
     assets[sym] = { status: r.status, source: r.source, ref: r.data.ref, fetchedAt: r.fetchedAt, proxy: SOURCES.proxyNote[`${r.source}:${sym}`] || null, ...(a || {}) };
   } else assets[sym] = { status: 'UNAVAILABLE', source: null };
-  if (providers[0] && providers[0].name === 'TwelveData') await new Promise((res) => setTimeout(res, 8000)); // free tier: 8 req/min
+  if (r.source === 'TwelveData') await sleep(8000); // free tier: 8 req/min
 }
 
 // ---- Economic calendar ----

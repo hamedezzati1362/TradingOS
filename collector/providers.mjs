@@ -31,13 +31,16 @@ export function yahoo(symbolMap, priority = 2) {
       sym = sym.split(':')[0];
       const s = symbolMap[sym]; if (!s) throw new Error(`Yahoo: no mapping for ${sym}`);
       const iv = { '15min': '15m', '1h': '60m', '1day': '1d' }[interval] || '15m';
-      const range = interval === '1day' ? '3mo' : '10d';
+      const range = { '15min': '10d', '1h': '60d', '1day': '1y' }[interval] || '10d';
       const j = await getJson(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s)}?interval=${iv}&range=${range}`, 'Yahoo');
       const r = j.chart && j.chart.result && j.chart.result[0];
       if (!r || !r.timestamp) throw new Error(`Yahoo: ${(j.chart && j.chart.error && j.chart.error.description) || 'no data'}`);
       const q = r.indicators.quote[0]; const candles = [];
-      r.timestamp.forEach((ts, i) => { if ([q.open[i], q.high[i], q.low[i], q.close[i]].every((x) => typeof x === 'number')) candles.push({ t: ts * 1000, o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i] }); });
-      return { symbol: sym, source: 'Yahoo', ref: s, candles };
+      r.timestamp.forEach((ts, i) => { if ([q.open[i], q.high[i], q.low[i], q.close[i]].every((x) => typeof x === 'number')) candles.push({ t: ts * 1000, o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i], v: typeof q.volume[i] === 'number' ? q.volume[i] : 0 }); });
+      // Yahoo appends a live tick "bar" at an off-grid timestamp: keep only bars on the interval grid.
+      const step = { '15min': 900000, '1h': 3600000 }[interval];
+      const clean = step ? candles.filter((x) => x.t % step === 0) : candles;
+      return { symbol: sym, source: 'Yahoo', ref: s, candles: clean };
     },
   };
 }

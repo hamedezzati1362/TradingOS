@@ -101,6 +101,10 @@ button { font: inherit; color: inherit; }
 
 /* assets */
 .assets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--gap); }
+.tfbar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tfbar .k { font: 600 10px var(--sans); letter-spacing: 1.2px; color: var(--ink-3); margin-inline-end: 4px; }
+.tfbar button { background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 12px; font: 700 11px var(--mono); color: var(--ink-2); cursor: pointer; }
+.tfbar button.on { color: var(--info); border-color: var(--info); }
 .asset { padding: 12px 14px; }
 .asset .row1 { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .asset .sym { font: 700 14px var(--mono); letter-spacing: .5px; }
@@ -259,3 +263,42 @@ button { font: inherit; color: inherit; }
 .fitem .fa .up { color: var(--up); } .fitem .fa .down { color: var(--down); }
 .fempty { color: var(--ink-3); font: 12.5px 'Vazirmatn', var(--sans); direction: rtl; text-align: right; padding: 8px 0; }
 @media (max-width: 1024px) { .focus-grid { grid-template-columns: 1fr; } }
+
+/* technicals (phase 10) */
+.chart-btn { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; width: 26px; height: 22px; cursor: pointer; color: var(--ink-2); font-size: 13px; line-height: 1; }
+.chart-btn:hover { color: var(--info); border-color: var(--info); }
+.tech { margin: 10px 0 8px; display: grid; gap: 6px; }
+.tsum { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tsum b { font: 700 15px var(--mono); letter-spacing: .5px; }
+.tsum .tf, .tsum .k { font: 600 10px var(--mono); color: var(--ink-3); letter-spacing: 1px; }
+.rmeter { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--down), #6b2c2c 30%, var(--panel-2) 50%, #1d5a42 70%, var(--up)); }
+.rmeter span { position: absolute; top: -4px; width: 4px; height: 14px; margin-left: -2px; background: #fff; border-radius: 2px; box-shadow: 0 0 6px #fff; }
+.rscale { display: flex; justify-content: space-between; font: 8px var(--mono); color: var(--ink-3); direction: ltr; }
+.tcount { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-3); }
+.tind { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; font: 11px var(--mono); }
+.tind .n { color: var(--ink-3); }
+.act { font: 700 10px var(--mono); padding: 1px 6px; border-radius: 4px; text-align: center; }
+[dir="rtl"] .act { font-family: 'Vazirmatn', var(--sans); }
+.act.buy { color: var(--up); background: rgba(38,194,129,.1); } .act.sell { color: var(--down); background: rgba(239,83,80,.1); } .act.neutral { color: var(--ink-3); background: var(--panel-2); }
+body.modal-open { overflow: hidden; }
+.modal { position: fixed; inset: 0; z-index: 50; background: rgba(5,7,11,.85); display: flex; padding: 16px; }
+.modal[hidden] { display: none; }
+.mwrap { flex: 1; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; min-width: 0; }
+.mhead { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.mhead b { font-size: 16px; }
+.mclose { margin-inline-start: auto; background: none; border: 1px solid var(--line-2); border-radius: 6px; width: 32px; height: 28px; cursor: pointer; color: var(--ink-2); }
+.mbody { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+.mchart { min-height: 0; position: relative; }
+.mtable { overflow-y: auto; border-inline-start: 1px solid var(--line); padding: 12px; display: grid; gap: 14px; align-content: start; }
+.tblk { display: grid; gap: 6px; }
+.ttab { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ttab td { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.ttab td:nth-child(2) { text-align: end; color: var(--ink-2); padding-inline: 8px; }
+.ttab td:last-child { text-align: end; }
+.mfoot { padding: 8px 14px; border-top: 1px solid var(--line); margin: 0; color: var(--ink-3); }
+@media (max-width: 900px) {
+  .modal { padding: 0; }
+  .mwrap { border-radius: 0; }
+  .mbody { grid-template-columns: 1fr; grid-template-rows: 62vh auto; overflow-y: auto; }
+  .mtable { border-inline-start: 0; border-top: 1px solid var(--line); overflow: visible; }
+}
