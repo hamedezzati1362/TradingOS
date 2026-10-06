@@ -11,6 +11,7 @@ export function twelveData(apiKey, symbolMap) {
   return {
     name: 'TwelveData', priority: 1, timeoutMs: 15000, retries: 1,
     enabled: !!apiKey,
+    supports: (sym) => !!symbolMap[sym],
     async fetch(sym, { interval = '15min', bars = 300 } = {}) {
       const s = symbolMap[sym]; if (!s) throw new Error(`TwelveData: no mapping for ${sym}`);
       const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(s)}&interval=${interval}&outputsize=${bars}&timezone=UTC&order=ASC&apikey=${apiKey}`;
@@ -24,6 +25,7 @@ export function twelveData(apiKey, symbolMap) {
 export function yahoo(symbolMap) {
   return {
     name: 'Yahoo', priority: 2, timeoutMs: 15000, retries: 1, enabled: true,
+    supports: (sym) => !!symbolMap[sym],
     async fetch(sym, { interval = '15min' } = {}) {
       const s = symbolMap[sym]; if (!s) throw new Error(`Yahoo: no mapping for ${sym}`);
       const iv = { '15min': '15m', '1h': '60m' }[interval] || '15m';

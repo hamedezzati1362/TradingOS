@@ -31,7 +31,7 @@ export class ProviderManager {
   /**
    * @param {object} o
    * @param {string} o.kind                        e.g. 'price'
-   * @param {Array}  o.providers                   [{ name, priority, fetch: async (key, ctx) => data, timeoutMs?, retries? }]
+   * @param {Array}  o.providers                   [{ name, priority, fetch: async (key, ctx) => data, supports?: key => bool, timeoutMs?, retries? }]
    * @param {Function} [o.validate]                (data, key, ctx) => {ok, reason, value?}
    * @param {object} [o.cache]                     get/set store for last-known-good
    * @param {number} [o.staleAfterMs]              cache older than this is STALE
@@ -101,6 +101,7 @@ export class ProviderManager {
     const attempts = [];
     for (let i = 0; i < this.providers.length; i++) {
       const p = this.providers[i];
+      if (p.supports && !p.supports(key)) { attempts.push({ provider: p.name, result: 'not supported' }); continue; }
       if (!this._available(p)) { attempts.push({ provider: p.name, result: 'skipped (circuit open)' }); continue; }
       const retries = p.circuitProbe ? 0 : (p.retries ?? this.defaults.retries);
       const tries = p.health.circuit === CIRCUIT.HALF_OPEN ? 1 : retries + 1;

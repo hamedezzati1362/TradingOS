@@ -112,3 +112,9 @@ test('news validation drops bad items and dedupes across sources', () => {
   assert.equal(d.removed, 1); assert.equal(d.items.length, 3);
   assert.equal(validateEventList([{ title: 'x', ts: NaN }, { title: 'y', ts: NaN }]).ok, false);
 });
+test('provider that does not support a key is skipped without counting as a failure', async () => {
+  const m = pm([ok(1), ok(2)]);
+  m.providers[0].supports = (k) => k !== 'BRENT';
+  const r = await m.get('BRENT');
+  assert.equal(r.source, 'B'); assert.equal(r.status, 'FALLBACK'); assert.equal(m.health()[0].failures, 0);
+});
