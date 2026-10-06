@@ -8,4 +8,4 @@ Live site: https://hamedezzati1362.github.io/tradingos/
 - `node tests/ui.check.mjs <url> <dir>` — responsive/console/offline checks (needs Playwright)
 - Architecture: `docs/ARCHITECTURE_FA.md`
 
-Status: Phase 1–7. Prices, structure, regime, volatility, momentum, economic calendar and news (with Persian impact notes) are real. Macro drivers are DEMO until Phase 9.
+Status: Phase 1–9. All dashboard data is real: prices, structure, regime, key levels, ADR, economic calendar and news (Persian impact notes), gold & dollar focus, macro drivers.

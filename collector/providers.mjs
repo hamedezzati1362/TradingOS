@@ -23,9 +23,9 @@ export function twelveData(apiKey, symbolMap) {
   };
 }
 
-export function yahoo(symbolMap) {
+export function yahoo(symbolMap, priority = 2) {
   return {
-    name: 'Yahoo', priority: 2, timeoutMs: 15000, retries: 1, enabled: true,
+    name: 'Yahoo', priority, timeoutMs: 15000, retries: 1, enabled: true,
     supports: (sym) => !!symbolMap[sym.split(':')[0]],
     async fetch(sym, { interval = '15min' } = {}) {
       sym = sym.split(':')[0];

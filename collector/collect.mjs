@@ -11,6 +11,7 @@ import { validateCandles } from './validate.mjs';
 import { forexFactory, finnhubCalendar, finnhubNews, googleNews } from './news-providers.mjs';
 import { validateEventList, dedupeEvents } from '../public/assets/js/core/validators.js';
 import { explainEvent, explainHeadline } from '../public/assets/js/core/impact-kb.js';
+import { MACRO, driverStats, goldBias } from '../public/assets/js/core/macro-engine.js';
 
 const [out, prevUrl] = process.argv.slice(2);
 const log = [];
@@ -23,7 +24,7 @@ async function loadPrevious() {
 
 const prev = await loadPrevious();
 const cache = new MemoryCache();
-if (prev && prev.raw) for (const [k, v] of Object.entries(prev.raw)) cache.set(k, v);
+if (prev && prev.raw) for (const [k, v] of Object.entries(prev.raw)) cache.set(k.startsWith('macro:') ? k.slice(6) : k, v);
 if (prev && prev.rawLists) for (const [k, v] of Object.entries(prev.rawLists)) cache.set(k, v);
 L('info', prev ? `previous snapshot loaded (${prev.generatedAt})` : 'no previous snapshot (cold start)');
 
@@ -80,8 +81,25 @@ if (nr.data) {
     .filter((n) => n.kb).slice(0, 20);
 }
 
-const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news,
-  health: { price: pm.health(), calendar: calPm.health(), news: newsPm.health() }, log: log.slice(-80), raw,
+// ---- Macro drivers (context only) ----
+const macroPm = new ProviderManager({ kind: 'macro', cache, providers: [yahoo(Object.fromEntries(MACRO.map((m) => [m.id, m.yahoo])), 1)],
+  validate: (d, k, ctx) => validateCandles(d, `${k}:1day`, ctx), staleAfterMs: 3 * 86400000, log: L, retries: 1, backoffMs: 1500 });
+const macroItems = []; let macroStatus = 'LIVE', macroFetched = Date.now(), macroSrc = 'Yahoo';
+for (const m of MACRO) {
+  const r = await macroPm.get(m.id, { interval: '1day' });
+  if (r.data) {
+    raw[`macro:${m.id}`] = { data: { ...r.data, candles: r.data.candles.slice(-30) }, source: r.source, fetchedAt: r.fetchedAt };
+    const st = driverStats(m, r.data.candles);
+    if (st) macroItems.push({ id: m.id, name: m.name, unit: m.unit, dp: m.dp, status: r.status, ...st });
+    if (r.status !== 'LIVE') macroStatus = r.status; macroFetched = Math.min(macroFetched, r.fetchedAt);
+  } else macroStatus = 'UNAVAILABLE';
+}
+const gsr = assets.XAUUSD && assets.XAUUSD.price && macroItems.find((x) => x.id === 'SILVER') ? assets.XAUUSD.price / macroItems.find((x) => x.id === 'SILVER').value : null;
+const macro = { status: macroItems.length ? macroStatus : 'UNAVAILABLE', source: macroSrc, fetchedAt: macroItems.length ? macroFetched : null,
+  items: macroItems, goldBias: macroItems.length ? goldBias(macroItems) : null, goldSilverRatio: gsr };
+
+const snapshot = { version: 1, generatedAt: Date.now(), interval: '15min', assets, calendar, news, macro,
+  health: { price: pm.health(), calendar: calPm.health(), news: newsPm.health(), macro: macroPm.health() }, log: log.slice(-80), raw,
   rawLists: Object.fromEntries(['calendar', 'news'].map((k) => [k, cache.get(k)]).filter(([, v]) => v)) };
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(snapshot));

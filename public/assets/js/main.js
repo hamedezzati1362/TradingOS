@@ -3,7 +3,6 @@ import { zonedParts, serverParts, zoneOffsetMinutes, serverOffsetMinutes, zonedT
 import { sessionStates, timelineIntervals } from './engines/session-engine.js';
 import { t, getLang, setLang } from './i18n.js';
 import { computeCondition, scoreSession } from './core/condition-engine.js';
-import { DEMO_DRIVERS } from './demo-data.js';
 import { scoreVolatility, scoreNewsRisk } from './core/condition-engine.js';
 import { loadSnapshot, displayStatus, fmtAge } from './data-client.js';
 
@@ -207,9 +206,81 @@ function renderTimeline(now) {
 }
 
 function renderDrivers() {
-  $('drivers').innerHTML = `<div class="card-h"><h2>${t('drivers')} · XAUUSD</h2>${pill('demo', t('demo'))}</div>
-    ${DEMO_DRIVERS.map((d) => `<div class="drv"><span class="n">${d.name}</span><span class="note">${esc(d.note)}</span>
-      <span class="v ${d.dir > 0 ? 'up' : d.dir < 0 ? 'down' : 'flat'}">${d.dir > 0 ? '▲' : d.dir < 0 ? '▼' : '◆'} ${esc(d.value)}</span></div>`).join('')}`;
+  const m = SNAP && SNAP.macro, now = Date.now();
+  const st = !m || !m.fetchedAt ? 'UNAVAILABLE' : displayStatus(m.status, m.fetchedAt, now, { liveMaxAgeMs: 26 * 3600000, staleAfterMs: 4 * 86400000 });
+  const head = `<div class="card-h"><h2>${t('drivers')} · XAUUSD</h2>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>`;
+  if (!m || !m.items || !m.items.length) { $('drivers').innerHTML = `${head}<p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p>`; return; }
+  const ar = (d) => (d > 0 ? '▲' : d < 0 ? '▼' : '◆');
+  const gb = m.goldBias;
+  const gcol = gb.label === 'TAILWIND' ? 'var(--up)' : gb.label === 'HEADWIND' ? 'var(--down)' : 'var(--warn)';
+  $('drivers').innerHTML = `${head}
+    <div class="gbias" style="border-color:${gcol}"><span class="mono" style="color:${gcol}">${gb.label}</span><span class="fa" style="margin:0">${esc(gb.labelFa)}</span></div>
+    ${m.items.map((x) => `<div class="drv2"><span class="n">${esc(x.name)}</span>
+      <span class="v num">${x.value.toFixed(x.dp)}${esc(x.unit)}</span>
+      <span class="c num ${x.dir > 0 ? 'up' : x.dir < 0 ? 'down' : 'flat'}">${ar(x.dir)} 5D ${x.chg5d > 0 ? '+' : ''}${x.chg5d.toFixed(2)}${x.unit === '%' ? 'pt' : '%'}</span>
+      <span class="g" title="effect on gold">${x.goldEffect > 0 ? '<b class="up">AU ↑</b>' : x.goldEffect < 0 ? '<b class="down">AU ↓</b>' : '<b class="flat">AU ·</b>'}</span>
+      <div class="fa">${esc(x.noteFa)}</div></div>`).join('')}
+    ${m.goldSilverRatio ? `<div class="drv2"><span class="n">GOLD/SILVER</span><span class="v num">${m.goldSilverRatio.toFixed(1)}</span><span></span><span></span></div>` : ''}
+    <p class="demo-note" style="color:var(--ink-3)">${esc(m.source)} · daily · ${t('age')} ${fmtAge(now - m.fetchedAt)} · <span class="fa" style="display:inline">فقط زمینه‌ی کلان؛ در امتیاز تصمیم حساب نمی‌شود.</span></p>`;
+}
+
+/* ---------- day selection (shared by Focus and Calendar) ---------- */
+const DAY_TZ = CONFIG.timelineTz;
+const dayId = (ts) => { const p = zonedParts(new Date(ts), DAY_TZ); return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`; };
+let selDay = null;   // null = today
+const faDay = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { timeZone: DAY_TZ, weekday: 'long', day: 'numeric', month: 'long' });
+const faWd = new Intl.DateTimeFormat('fa-IR', { timeZone: DAY_TZ, weekday: 'long' });
+function dayLabel(id, todayId) {
+  const d0 = Date.parse(todayId + 'T12:00:00Z'), d = Date.parse(id + 'T12:00:00Z'), diff = Math.round((d - d0) / 86400000);
+  const rel = { 0: t('dToday'), 1: t('dTomorrow'), 2: t('dAfter') }[diff];
+  const wd = faWd.format(new Date(d));
+  return { main: rel || (getLang() === 'fa' ? wd : new Date(d).toUTCString().slice(0, 3)), sub: id.slice(5) };
+}
+function dayPicker(events) {
+  const todayId = dayId(Date.now()), cur = selDay || todayId;
+  const ids = [...new Set(events.map((e) => dayId(e.ts)))].filter((d) => d >= todayId).sort();
+  if (!ids.includes(todayId)) ids.unshift(todayId);
+  const hi = (id) => events.filter((e) => dayId(e.ts) === id && e.impact === 'HIGH').length;
+  return `<div class="days">${ids.map((id) => { const l = dayLabel(id, todayId); const n = hi(id);
+    return `<button type="button" data-day="${id}" class="${id === cur ? 'on' : ''}">${esc(l.main)}<small>${l.sub}${n ? ` · <span class="cnt">${n} HIGH</span>` : ''}</small></button>`; }).join('')}
+    <input type="date" data-daypick value="${cur}" min="${ids[0]}" max="${ids[ids.length - 1]}" aria-label="date"></div>`;
+}
+const dayEvents = (events) => { const cur = selDay || dayId(Date.now()); return events.filter((e) => dayId(e.ts) === cur); };
+
+/* ---------- Gold & USD focus ---------- */
+const RULE_RANK = { rate: 9, cpi: 8, nfp: 8, cbspeak: 6, unemp: 6, gdp: 5, pmi: 4, retail: 4, crude: 3, opec: 3 };
+const IMP_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+const prio = (e) => IMP_RANK[e.impact] * 10 + (RULE_RANK[e.kb && e.kb.rule] || 0);
+const UP = '<b class="up">بالا برود ▲</b>', DOWN = '<b class="down">پایین بیاید ▼</b>';
+
+/** Persian sentence: how `target` ('gold' | 'usd') may react to event e. */
+function focusSentence(e, target) {
+  const k = e.kb, at = `ساعت ${hm(new Date(e.ts), DAY_TZ)}`;
+  const who = target === 'gold' ? 'طلا' : 'دلار';
+  let dir;   // +1: target tends to rise if the release is ABOVE forecast / hawkish
+  if (target === 'gold') dir = k.effects.XAUUSD || 0;
+  else dir = e.ccy === 'USD' ? (k.effects.USDJPY || 0) : -(k.effects.EURUSD || k.effects.GBPUSD || -(k.effects.USDJPY || 0) || 0);
+  const fc = e.forecast ? ` (پیش‌بینی ${esc(e.forecast)}، قبلی ${esc(e.previous ?? '--')})` : '';
+  if (!dir) return `${who} ممکن است ${at} تحت تأثیر <b>${esc(e.title)}</b> نوسان کند؛ جهت به جزئیات خبر بستگی دارد.`;
+  if (k.noDirection) return `${who} ${at} تحت تأثیر <b>${esc(e.title)}</b>: لحن انقباضی ← ${who} ممکن است ${dir > 0 ? UP : DOWN}؛ لحن انبساطی ← ممکن است ${dir > 0 ? DOWN : UP}.`;
+  return `${who} ${at} تحت تأثیر <b>${esc(e.title)}</b>${fc}: اگر عدد بالاتر از پیش‌بینی بیاید ${who} ممکن است ${dir > 0 ? UP : DOWN}؛ اگر پایین‌تر بیاید ممکن است ${dir > 0 ? DOWN : UP}.`;
+}
+
+function renderFocus() {
+  const c = SNAP && SNAP.calendar, now = Date.now(), st = calStatus(now);
+  const head = `<div class="card-h"><h2>${t('focus')}</h2>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>`;
+  if (!c || !c.events) { $('focus').innerHTML = `${head}<p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p>`; return; }
+  const evs = dayEvents(c.events).filter((e) => e.kb && e.impact !== 'LOW');
+  const gold = evs.filter((e) => e.kb.relevance.includes('XAUUSD')).sort((a, b) => prio(b) - prio(a) || a.ts - b.ts);
+  const usd = evs.filter((e) => e.ccy === 'USD' || (['EUR', 'GBP', 'JPY'].includes(e.ccy) && e.impact === 'HIGH')).sort((a, b) => prio(b) - prio(a) || a.ts - b.ts);
+  const cur = selDay || dayId(now), lbl = faDay.format(new Date(Date.parse(cur + 'T12:00:00Z')));
+  const box = (title, sub, list, target) => `<div class="fbox"><h3>${title}<span class="fa">${esc(sub)}</span></h3>
+    ${list.length ? list.map((e, i) => `<div class="fitem"><div><div class="tm">${hm(new Date(e.ts), DAY_TZ)}</div><div class="rank">#${i + 1} <span class="imp ${e.impact}">${e.impact}</span></div><div class="rank">${esc(e.ccy)}</div></div>
+      <div><div class="fa">${focusSentence(e, target)}</div></div></div>`).join('')
+      : `<div class="fempty">برای ${esc(lbl)} رویداد مهمی برای ${target === 'gold' ? 'طلا' : 'دلار'} در تقویم نیست.</div>`}</div>`;
+  $('focus').innerHTML = `${head}${dayPicker(c.events)}<div class="focus-grid">
+    ${box('XAUUSD · GOLD', `طلا · ${lbl}`, gold, 'gold')}${box('USD · DOLLAR', `دلار · ${lbl}`, usd, 'usd')}</div>
+    <p class="demo-note" style="color:var(--ink-3)"><span class="fa" style="display:inline">مرتب‌شده بر اساس اهمیت خبر. «ممکن است» یعنی واکنش معمول بازار، نه پیش‌بینی قطعی؛ واکنش واقعی به فاصله‌ی عدد با پیش‌بینی و شرایط آن روز بستگی دارد.</span> · ${esc(DAY_TZ)}</p>`;
 }
 
 const FILTERS = ['ALL', 'HIGH', 'MEDIUM', 'USD', 'EUR', 'GBP', 'JPY', 'GOLD', 'OIL'];
@@ -226,12 +297,12 @@ function eventPasses(e) {
 }
 
 function renderEvents() {
-  const now = Date.now(), st = calStatus(now), tz = CONFIG.timelineTz;
+  const now = Date.now(), st = calStatus(now), tz = CONFIG.timelineTz, c0 = SNAP && SNAP.calendar;
   const c = SNAP && SNAP.calendar;
   const head = `<div class="card-h"><h2>${t('events')}</h2>${pill(st.toLowerCase(), t(st.toLowerCase()))}</div>
-    <div class="filters">${FILTERS.map((f) => `<button type="button" data-evf="${f}" class="${f === evFilter ? 'on' : ''}">${f}</button>`).join('')}</div>`;
+    ${c0 && c0.events ? dayPicker(c0.events) : ''}<div class="filters">${FILTERS.map((f) => `<button type="button" data-evf="${f}" class="${f === evFilter ? 'on' : ''}">${f}</button>`).join('')}</div>`;
   if (!c || !c.events) { $('events').innerHTML = `${head}<p class="demo-note" style="color:var(--ink-3)">${esc(SNAP_ERR || t('unavailable'))}</p>`; return; }
-  const list = c.events.filter((e) => e.ts >= now - 2 * 3600000 && e.ts <= now + 48 * 3600000 && eventPasses(e)).slice(0, 30);
+  const list = dayEvents(c.events).filter(eventPasses).slice(0, 40);
   const day = (ts) => { const p = zonedParts(new Date(ts), tz); return `${DAYS[p.weekday]} ${pad2(p.day)} ${MONTHS[p.month - 1]}`; };
   $('events').innerHTML = `${head}<div class="list-scroll">${list.length ? list.map((e) => {
     const k = e.kb, dm = Math.round((e.ts - now) / 60000);
@@ -297,7 +368,7 @@ function provTable(label, prov) {
 async function refreshData() {
   const r = await loadSnapshot(CONFIG.data.snapshotUrl);
   if (r.ok) { SNAP = r.snap; SNAP_ERR = null; } else SNAP_ERR = r.error;   // keep the previous snapshot (its age keeps growing)
-  safe('assets', renderAssets); safe('levels', renderLevels); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth); lastMinute = -1; tick();
+  safe('assets', renderAssets); safe('levels', renderLevels); safe('drivers', renderDrivers); safe('focus', renderFocus); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth); lastMinute = -1; tick();
 }
 
 function staticText() {
@@ -316,7 +387,7 @@ function tick() {
 }
 function renderAll() {
   lastMinute = -1; staticText();
-  safe('assets', renderAssets); safe('levels', renderLevels); safe('drivers', renderDrivers); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth);
+  safe('assets', renderAssets); safe('levels', renderLevels); safe('drivers', renderDrivers); safe('focus', renderFocus); safe('events', renderEvents); safe('news', renderNews); safe('health', renderHealth);
   tick();
 }
 
@@ -336,6 +407,11 @@ $('lang-btn').addEventListener('click', () => { setLang(getLang() === 'fa' ? 'en
 window.addEventListener('online', () => safe('health', renderHealth));
 window.addEventListener('offline', () => safe('health', renderHealth));
 setupTabs();
+function onDay(id) { selDay = id === dayId(Date.now()) ? null : id; safe('focus', renderFocus); safe('events', renderEvents); }
+for (const id of ['focus', 'events']) {
+  $(id).addEventListener('click', (e) => { const b = e.target.closest('button[data-day]'); if (b) onDay(b.dataset.day); });
+  $(id).addEventListener('change', (e) => { if (e.target.matches('input[data-daypick]') && e.target.value) onDay(e.target.value); });
+}
 $('levels').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-lv]'); if (!b) return;
   lvSym = b.dataset.lv; try { localStorage.setItem('tos.lv', lvSym); } catch { /* ignore */ }
