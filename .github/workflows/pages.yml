@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       alert_test:
-        description: 'Send a test alert message (1 = yes)'
+        description: 'Test message: 1 = connection test, brief = morning brief now'
         required: false
         default: '0'
 permissions:

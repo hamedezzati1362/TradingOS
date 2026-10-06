@@ -13,7 +13,7 @@ import { forexFactory, finnhubCalendar, finnhubNews, googleNews } from './news-p
 import { validateEventList, dedupeEvents } from '../public/assets/js/core/validators.js';
 import { explainEvent, explainHeadline } from '../public/assets/js/core/impact-kb.js';
 import { MACRO, driverStats, goldBias } from '../public/assets/js/core/macro-engine.js';
-import { buildAlerts, deliver } from './alerts.mjs';
+import { buildAlerts, deliver, morningBrief } from './alerts.mjs';
 import { assetCondition } from '../public/assets/js/core/asset-condition.js';
 import { CONFIG } from '../public/assets/js/config.js';
 import { appendHistory } from './history.mjs';
@@ -156,6 +156,10 @@ let alertState = { sent: (prev && prev.alerts && prev.alerts.sent) || {}, health
 try {
   const pending = buildAlerts({ calendar, assets, sent: alertState.sent, condition: conditions, macro, lastBars });
   if (process.env.ALERT_TEST === '1') pending.push({ id: `test:${Date.now()}`, text: '✅ TradingOS: پیام آزمایشی. اتصال هشدارها برقرار است.' });
+  if (process.env.ALERT_TEST === 'brief' && assets.XAUUSD && assets.XAUUSD.price != null) {
+    const now = Date.now(), today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran' }).format(new Date(now));
+    pending.push({ id: `test-brief:${now}`, text: '🧪 (نمونه‌ی آزمایشی)\n' + morningBrief({ g: assets.XAUUSD, calendar, now, today, condition: conditions.XAUUSD, macro }) });
+  }
   alertState = await deliver(pending, alertState.sent, process.env, L);
 } catch (e) { L('error', `alerts failed: ${e.message}`); }
 

@@ -61,7 +61,7 @@ export function buildAlerts({ calendar, assets, now = Date.now(), sent = {}, lea
   return out;
 }
 
-function morningBrief({ g, calendar, now, today, condition, macro }) {
+export function morningBrief({ g, calendar, now, today, condition, macro }) {
   const tf = (k) => (g.tech && g.tech[k] ? FA_LABEL[g.tech[k].summary.label] : '--');
   const L = g.levels || {}, lv = (n) => { const x = (L.levels || []).find((y) => y.name === n); return x ? x.price.toFixed(2) : '--'; };
   const evs = ((calendar && calendar.events) || []).filter((e) => IRDAY.format(new Date(e.ts)) === today && e.impact !== 'LOW' && e.kb && (e.ccy === 'USD' || e.kb.relevance.includes('XAUUSD')))
