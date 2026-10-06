@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<title>TradingOS</title>
+<meta name="description" content="Market condition and decision-support terminal">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Vazirmatn:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="assets/icons/icon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true">◆</span><span class="brand-name">TradingOS</span><span class="tagline" data-t="tagline"></span></div>
+  <div class="topbar-right">
+    <span class="pill" id="net-pill"></span>
+    <button class="lang-btn" id="lang-btn" type="button" aria-label="Language">FA</button>
+  </div>
+</header>
+
+<main class="grid" id="app">
+  <section class="clocks" id="clocks" aria-label="Clocks"></section>
+
+  <section class="card condition" id="condition" data-tab="home"></section>
+  <section class="card sessions" id="sessions" data-tab="home sessions"></section>
+
+  <section class="assets" id="assets" data-tab="home markets"></section>
+
+  <section class="card timeline" id="timeline" data-tab="sessions"></section>
+
+  <section class="card drivers" id="drivers" data-tab="home markets"></section>
+  <section class="card events" id="events" data-tab="home news"></section>
+
+  <section class="card health" id="health" data-tab="home system"></section>
+</main>
+
+<nav class="bottom-nav" id="bottom-nav" aria-label="Sections">
+  <button type="button" data-go="home" class="on"><span>◉</span><b data-t="home"></b></button>
+  <button type="button" data-go="markets"><span>▤</span><b data-t="markets"></b></button>
+  <button type="button" data-go="news"><span>✱</span><b data-t="newsTab"></b></button>
+  <button type="button" data-go="sessions"><span>◷</span><b data-t="sessionsTab"></b></button>
+  <button type="button" data-go="system"><span>⛁</span><b data-t="system"></b></button>
+</nav>
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>
