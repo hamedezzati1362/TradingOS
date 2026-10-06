@@ -1,8 +1,9 @@
 // Offline shell. App files: network-first (always fresh when online), cache fallback when offline.
 // Market data (data/*.json, later) is never served from here as LIVE: the app labels its age itself.
-const CACHE = 'tradingos-shell-v1';
+const CACHE = 'tradingos-shell-v2';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'assets/css/app.css', 'assets/js/main.js', 'assets/js/config.js',
   'assets/js/i18n.js', 'assets/js/demo-data.js', 'assets/js/engines/time-engine.js', 'assets/js/engines/session-engine.js',
+  'assets/js/core/condition-engine.js', 'assets/js/core/provider-manager.js', 'assets/js/core/validators.js',
   'assets/icons/icon.svg', 'assets/icons/icon-192.png', 'assets/icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

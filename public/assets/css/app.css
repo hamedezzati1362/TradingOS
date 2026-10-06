@@ -178,3 +178,6 @@ button { font: inherit; color: inherit; }
   .bottom-nav button.on { color: var(--info); }
   [data-tab].tab-hidden { display: none; }
 }
+.sd { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-inline-end: 6px; vertical-align: middle; background: var(--ink-3); }
+.sd.live { background: var(--up); } .sd.fallback, .sd.cache { background: var(--warn); } .sd.stale, .sd.unavailable { background: var(--bad); } .sd.demo { background: var(--demo); }
+.pill.unavailable { color: var(--bad); }

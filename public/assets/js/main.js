@@ -2,7 +2,8 @@ import { CONFIG } from './config.js';
 import { zonedParts, serverParts, zoneOffsetMinutes, serverOffsetMinutes, zonedToUtc, fmtHMS, fmtOffset, fmtDuration, pad2 } from './engines/time-engine.js';
 import { sessionStates, timelineIntervals } from './engines/session-engine.js';
 import { t, getLang, setLang } from './i18n.js';
-import { DEMO_ASSETS, DEMO_FACTORS, DEMO_REASONS, DEMO_EVENTS, DEMO_DRIVERS } from './demo-data.js';
+import { computeCondition, scoreSession } from './core/condition-engine.js';
+import { DEMO_ASSETS, DEMO_FACTORS, DEMO_EVENTS, DEMO_DRIVERS } from './demo-data.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,16 +30,6 @@ function renderClocks(now) {
   }).join('');
 }
 
-/** Session factor is computed live from the Session Engine; every other factor is DEMO until providers exist. */
-function sessionFactor(ss) {
-  if (!ss.marketOpen) return 0;
-  const ids = ss.active.map((s) => s.id);
-  if (ids.includes('london') && ids.includes('newyork')) return 95;
-  if (ids.includes('london') || ids.includes('newyork')) return 78;
-  if (ids.includes('tokyo')) return 52;
-  return 35;
-}
-
 function gaugeSvg(v) {
   const r = 80, cx = 95, cy = 95, a = Math.PI * (1 - v / 100);
   const x = cx + r * Math.cos(a), y = cy - r * Math.sin(a);
@@ -51,22 +42,22 @@ function gaugeSvg(v) {
 }
 
 function renderCondition(ss) {
-  const f = { ...DEMO_FACTORS, session: sessionFactor(ss) };
-  const W = CONFIG.conditionWeights, tot = Object.values(W).reduce((a, b) => a + b, 0);
-  const score = Math.round(Object.keys(W).reduce((s, k) => s + (f[k] ?? 0) * W[k], 0) / tot);
-  const plus = [], minus = [];
-  if (ss.overlaps.length) plus.push(`${ss.overlaps.map((o) => `${o[0].name}/${o[1].name}`).join(', ')} ${t('overlap').toLowerCase()}`);
-  else if (!ss.marketOpen) minus.push(t('marketClosed'));
-  else if (f.session < 60) minus.push(`Low-liquidity session (${ss.active.map((s) => s.name).join(', ') || t('none')})`);
-  const order = ['session', 'liquidity', 'volatility', 'news', 'structure', 'momentum', 'regime', 'spread'];
-  $('condition').innerHTML = `<div class="card-h"><h2>${t('marketCondition')}</h2>${pill('demo', t('demo'))}</div>
+  const sess = scoreSession(ss);
+  const factors = { ...DEMO_FACTORS, session: { value: sess.value, status: 'LIVE', note: sess.note } };
+  const r = computeCondition(factors, CONFIG.conditionWeights, CONFIG.conditionBands,
+    { minCoverage: CONFIG.minCoverage, vetoes: CONFIG.conditionVetoes });
+  const v = r.score ?? 0;
+  const label = { FAVORABLE: t('favorable'), CAUTION: t('caution'), NO_TRADE: t('noTrade'), INSUFFICIENT: t('insufficient') }[r.band];
+  const col = r.score == null ? 'var(--ink-3)' : scoreColor(v);
+  const pillCls = r.status.toLowerCase();
+  $('condition').innerHTML = `<div class="card-h"><h2>${t('marketCondition')}</h2>${pill(pillCls, t(pillCls))}</div>
     <div class="cond-body">
-      <div class="gauge">${gaugeSvg(score)}<div class="val num" style="color:${scoreColor(score)}">${score}</div><div class="state" style="color:${scoreColor(score)}">${esc(bandLabel(score))}</div></div>
-      <div class="bars">${order.map((k) => `<div class="bar"><span class="k">${esc(t(k === 'news' ? 'news' : k))}${k === 'session' ? ' ●' : ''}</span>
-        <span class="track"><span class="fill" style="width:${f[k]}%;background:${scoreColor(f[k])}"></span></span><span class="v">${f[k]}</span></div>`).join('')}</div>
+      <div class="gauge">${gaugeSvg(v)}<div class="val num" style="color:${col}">${r.score ?? '--'}</div><div class="state" style="color:${col}">${esc(label)}</div></div>
+      <div class="bars">${r.breakdown.map((b) => `<div class="bar"><span class="k"><i class="sd ${b.status.toLowerCase()}" title="${b.status}"></i>${esc(t(b.key))}</span>
+        <span class="track"><span class="fill" style="width:${b.value ?? 0}%;background:${b.value == null ? 'transparent' : scoreColor(b.value)}"></span></span><span class="v">${b.value ?? '--'}</span></div>`).join('')}</div>
     </div>
-    <div class="why"><b>${t('why')}</b>${[...plus, ...DEMO_REASONS.plus].map((x) => `<span class="p">+ ${esc(x)}</span>`).join('')}${[...minus, ...DEMO_REASONS.minus].map((x) => `<span class="m">− ${esc(x)}</span>`).join('')}</div>
-    <p class="demo-note">● ${esc(t('session'))} = LIVE (Session Engine). ${esc(t('demoNote'))}</p>`;
+    <div class="why"><b>${t('why')}</b>${r.plus.map((x) => `<span class="p">+ ${esc(x)}</span>`).join('')}${r.minus.map((x) => `<span class="m">− ${esc(x)}</span>`).join('')}</div>
+    <p class="demo-note"><i class="sd live"></i>LIVE &nbsp;<i class="sd demo"></i>DEMO &nbsp;· ${t('coverage')} ${Math.round(r.coverage * 100)}% · ${esc(t('demoNote'))}</p>`;
 }
 
 function renderSessions(ss, now) {

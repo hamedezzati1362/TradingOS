@@ -27,3 +27,19 @@
 ## تست‌ها
 - `npm test` — ۱۱ تست موتور زمان/سشن (DST آمریکا/اروپا/سیدنی، نیمه‌شب، آخر هفته، ساعت سرور، تهران)
 - `node tests/ui.check.mjs <url> <dir>` — ۳۹۰/۷۶۸/۱۹۲۰ پیکسل × EN/FA، Overflow، خطای Console، حالت آفلاین
+
+## فاز ۴ — Market Condition Engine (`core/condition-engine.js`)
+- ورودی: فاکتورها `{value 0..100, status, note}`؛ وزن‌ها، باندها، حداقل پوشش و Vetoها از `config.js`
+- فاکتور ناموجود/STALE حذف و وزن بقیه نرمال می‌شود؛ پوشش < ۶۰٪ ← `INSUFFICIENT DATA`
+- Veto: خبر مهم نزدیک (news < 20) ← `NO_TRADE` صرف‌نظر از میانگین
+- وضعیت کل = بدترین وضعیت فاکتورهای استفاده‌شده (یک DEMO ← کل DEMO)
+- امتیازدهنده‌ها: Session، News Risk، Volatility (پرسنتایل ATR)، Spread
+
+## فاز ۵ — Provider Manager (`core/provider-manager.js`, `core/validators.js`)
+- زنجیره‌ی اولویت ← Timeout ← Retry با Backoff ← Validation ← Provider بعدی ← LKG Cache ← STALE ← UNAVAILABLE
+- Circuit Breaker: CLOSED → (۳ خطای پیاپی) OPEN → (Cooldown) HALF_OPEN → یک Probe → CLOSED/OPEN
+- Health Score: نسبت موفقیت، خطاهای پیاپی، Latency
+- Validation قیمت: null، منفی، Timestamp نامعتبر/آینده/قدیمی، Ask<Bid، جهش غیرعادی نسبت به آخرین داده‌ی سالم
+- Validation خبر + حذف تکراری بین منابع
+- لاگ‌ها کلید/توکن را ماسک می‌کنند؛ `get()` هرگز Exception نمی‌دهد و داده نمی‌سازد
+- تست‌ها: `tests/reliability.test.mjs` (سناریوهای ۱ تا ۵ و ۱۲ پرامپت)، `tests/condition.test.mjs`

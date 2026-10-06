@@ -18,6 +18,8 @@ export const CONFIG = {
   ],
   // Condition score weights (Phase 4 engine reads these; must sum to 100).
   conditionWeights: { session: 15, liquidity: 15, volatility: 15, news: 15, structure: 15, momentum: 10, regime: 10, spread: 5 },
+  minCoverage: 0.6,   // below this share of weight with usable data -> INSUFFICIENT DATA
+  conditionVetoes: [{ key: 'news', below: 20, reason: 'High-impact event imminent' }],
   conditionBands: { noTrade: [0, 49], caution: [50, 74], favorable: [75, 100] },
   assets: ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'BRENT'],
   timelineTz: 'Asia/Tehran',

@@ -13,9 +13,11 @@ function demoSpark(seed, dir) {   // deterministic, obviously synthetic shape
   return out;
 }
 
-export const DEMO_FACTORS = { session: null, liquidity: 82, volatility: 71, news: 34, structure: 72, momentum: 78, regime: 66, spread: 90 };
-export const DEMO_REASONS = { plus: ['Good liquidity', 'Strong momentum on XAUUSD'], minus: ['High impact event approaching'] };
-
+const D = (value, note) => ({ value, status: 'DEMO', note });
+export const DEMO_FACTORS = {
+  liquidity: D(82, 'Good liquidity'), volatility: D(71, 'Normal volatility'), news: D(34, 'High impact event approaching'),
+  structure: D(72, 'Clear structure on XAUUSD'), momentum: D(78, 'Strong momentum on XAUUSD'), regime: D(66, 'Trending regime'), spread: D(90, 'Normal spread'),
+};
 export const DEMO_EVENTS = [
   { time: '16:00', ccy: 'USD', impact: 'HIGH', title: 'US CPI (m/m)', actual: null, forecast: '0.3%', previous: '0.4%', rel: ['USD', 'XAUUSD', 'FX'] },
   { time: '18:30', ccy: 'USD', impact: 'HIGH', title: 'FOMC Member Speech', actual: null, forecast: null, previous: null, rel: ['USD', 'XAUUSD'] },
