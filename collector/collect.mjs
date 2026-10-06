@@ -78,7 +78,7 @@ for (const sym of SOURCES.assets) {
     raw[sym] = { data: { ...r.data, candles: r.data.candles.slice(-150) }, source: r.source, fetchedAt: r.fetchedAt };
     let a = null;
     try { a = analyse(r.data.candles); } catch (e) { L('error', `${sym}: analysis failed ${e.message}`); }
-    try { if (a) a.levels = keyLevels(r.data.candles, daily); } catch (e) { L('error', `${sym}: levels failed ${e.message}`); }
+    try { if (a) a.levels = keyLevels(r.data.candles, daily, { sessions: CONFIG.sessions }); } catch (e) { L('error', `${sym}: levels failed ${e.message}`); }
     // Per-timeframe candle files for charts + technical rating summary for cards.
     const series = { '15m': { data: r.data, source: r.source, fetchedAt: r.fetchedAt, status: r.status }, ...tfData };
     if (series['1h']) series['4h'] = { ...series['1h'], data: { ...series['1h'].data, candles: aggregate(series['1h'].data.candles, 4 * 3600000) } };

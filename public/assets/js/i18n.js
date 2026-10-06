@@ -10,7 +10,7 @@ const STR = {
     trend: 'TREND', structure: 'STRUCTURE', momentum: 'MOMENTUM', volatility: 'VOLATILITY', regime: 'REGIME', condition: 'CONDITION',
     session: 'SESSION', liquidity: 'LIQUIDITY', news: 'NEWS RISK', spread: 'SPREAD', price: 'PRICE', calendar: 'CALENDAR', timeEngine: 'TIME ENGINE',
     provider: 'Provider', latency: 'Latency', age: 'age', now: 'NOW', home: 'HOME', markets: 'MARKETS', newsTab: 'NEWS', sessionsTab: 'SESSIONS',
-    potential: 'Potential relevance', insufficient: 'INSUFFICIENT DATA', trackRecord: 'TRACK RECORD', records: 'records', reading: 'reading', avgMove: 'avg move', hit: 'hit', rating1h: 'Rating 1H', rating4h: 'Rating 4H', timeframe: 'TIMEFRAME', techNote: 'Indicator summary — not a trade recommendation', summary: 'SUMMARY', oscillators: 'OSCILLATORS', movingAverages: 'MOVING AVERAGES',
+    potential: 'Potential relevance', insufficient: 'INSUFFICIENT DATA', sessionLevels: 'SESSION HIGHS / LOWS', trackRecord: 'TRACK RECORD', records: 'records', reading: 'reading', avgMove: 'avg move', hit: 'hit', rating1h: 'Rating 1H', rating4h: 'Rating 4H', timeframe: 'TIMEFRAME', techNote: 'Indicator summary — not a trade recommendation', summary: 'SUMMARY', oscillators: 'OSCILLATORS', movingAverages: 'MOVING AVERAGES',
     a_buy: 'BUY', a_sell: 'SELL', a_neutral: 'NEUTRAL', r_strong_buy: 'STRONG BUY', r_buy: 'BUY', r_neutral: 'NEUTRAL', r_sell: 'SELL', r_strong_sell: 'STRONG SELL', focus: 'GOLD & DOLLAR FOCUS', dToday: 'Today', dTomorrow: 'Tomorrow', dAfter: 'Day after', keyLevels: 'KEY LEVELS', today: 'today', serverDay: 'broker day (NY 17:00)', noData: 'no data', fails: 'fails', cache: 'CACHE', coverage: 'coverage', fallback: 'FALLBACK', unavailable: 'UNAVAILABLE', forecast: 'Forecast', previous: 'Previous', actual: 'Actual', local: 'LOCAL',
   },
   fa: {
@@ -23,7 +23,7 @@ const STR = {
     trend: 'روند', structure: 'ساختار', momentum: 'مومنتوم', volatility: 'نوسان', regime: 'رژیم', condition: 'وضعیت',
     session: 'سشن', liquidity: 'نقدشوندگی', news: 'ریسک خبر', spread: 'اسپرد', price: 'قیمت', calendar: 'تقویم', timeEngine: 'موتور زمان',
     provider: 'منبع', latency: 'تأخیر', age: 'عمر', now: 'اکنون', home: 'خانه', markets: 'بازارها', newsTab: 'اخبار', sessionsTab: 'سشن‌ها',
-    potential: 'ارتباط احتمالی', insufficient: 'داده‌ی ناکافی', trackRecord: 'سابقه‌ی عملکرد', records: 'رکورد', reading: 'خوانش', avgMove: 'میانگین حرکت', hit: 'درصد درستی', rating1h: 'برآیند 1H', rating4h: 'برآیند 4H', timeframe: 'تایم‌فریم', techNote: 'جمع‌بندی اندیکاتورها — توصیه‌ی معامله نیست', summary: 'برآیند', oscillators: 'اسیلاتورها', movingAverages: 'میانگین‌های متحرک',
+    potential: 'ارتباط احتمالی', insufficient: 'داده‌ی ناکافی', sessionLevels: 'سقف و کف سشن‌ها', trackRecord: 'سابقه‌ی عملکرد', records: 'رکورد', reading: 'خوانش', avgMove: 'میانگین حرکت', hit: 'درصد درستی', rating1h: 'برآیند 1H', rating4h: 'برآیند 4H', timeframe: 'تایم‌فریم', techNote: 'جمع‌بندی اندیکاتورها — توصیه‌ی معامله نیست', summary: 'برآیند', oscillators: 'اسیلاتورها', movingAverages: 'میانگین‌های متحرک',
     a_buy: 'صعودی', a_sell: 'نزولی', a_neutral: 'خنثی', r_strong_buy: 'صعودی قوی', r_buy: 'صعودی', r_neutral: 'خنثی', r_sell: 'نزولی', r_strong_sell: 'نزولی قوی', focus: 'تمرکز طلا و دلار', dToday: 'امروز', dTomorrow: 'فردا', dAfter: 'پس‌فردا', keyLevels: 'سطوح کلیدی', today: 'امروز', serverDay: 'روز بروکر (۱۷:۰۰ نیویورک)', noData: 'بدون داده', fails: 'خطا', cache: 'کش', coverage: 'پوشش', fallback: 'جایگزین', unavailable: 'در دسترس نیست', forecast: 'پیش‌بینی', previous: 'قبلی', actual: 'واقعی', local: 'محلی',
   },
 };

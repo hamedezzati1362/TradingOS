@@ -38,7 +38,7 @@ const bandLabel = (v) => (v >= CONFIG.conditionBands.favorable[0] ? t('favorable
 
 /* Each panel renders inside its own try/catch so one failing panel never takes the dashboard down. */
 function safe(id, fn) {
-  try { fn(); } catch (e) { console.warn(`[panel ${id}]`, e); const el = $(id); if (el) el.innerHTML = `<div class="card-h"><h2>${esc(id)}</h2>${pill('down', 'ERROR')}</div>`; }
+  try { fn(); } catch (e) { console.warn(`[panel ${id}]`, e); const el = $(id); if (el) el.innerHTML = `<div class="card-h" data-panel-error><h2>${esc(id)}</h2>${pill('down', 'ERROR')}</div>`; }
 }
 
 function renderClocks(now) {
@@ -204,10 +204,23 @@ function renderLevels() {
       <div class="track"><i style="width:${Math.min(100, p)}%;background:${adrColor(L.adrPct)}"></i></div>
       <div class="mono" style="font-size:11px;color:var(--ink-2)">${t('today')} ${L.todayRange != null ? L.todayRange.toFixed(dp) : '--'} / ADR ${L.adr != null ? L.adr.toFixed(dp) : '--'}</div>
       <div class="fa">${esc(adrNote(L.adrPct))}</div>
-      ${L.asia ? `<div class="mono" style="font-size:11px;color:var(--ink-2)">ASIA ${L.asia.l.toFixed(dp)} – ${L.asia.h.toFixed(dp)}</div>` : ''}
     </div></div>
+    ${L.sessions && L.sessions.length ? sessionTable(L.sessions, a, dp) : ''}
     <p class="demo-note" style="color:var(--ink-3)">PDH/PDL/Pivots: ${t('serverDay')} · Week/ADR: ${esc(a.source)} daily · ${fmtAge(now - a.fetchedAt)}</p>`;
 }
+const ST_FA = { FORMING: 'در حال شکل‌گیری', INTACT: 'دست‌نخورده', SWEPT: 'شکار شد و برگشت', BROKEN: 'شکسته شد' };
+const ST_CLS = { FORMING: 'muted', INTACT: 'live', SWEPT: 'cache', BROKEN: 'down' };
+function sessionTable(sessions, a, dp) {
+  const tz = CONFIG.timelineTz;
+  const cell = (lvl, st) => `<div class="slv"><span class="num">${lvl.toFixed(dp)}</span><span class="pill ${ST_CLS[st.state]}">${getLang() === 'fa' ? ST_FA[st.state] : st.state}</span>${st.at ? `<span class="mono" style="color:var(--ink-3);font-size:10px">${hm(new Date(st.at), tz)}</span>` : ''}</div>`;
+  return `<div class="stbl"><div class="k" style="font:600 10px var(--sans);letter-spacing:1.2px;color:var(--ink-3)">${t('sessionLevels')}</div>
+    ${sessions.map((x) => `<div class="srow"><div><b class="mono">${x.label}</b> <span class="stars">${'★'.repeat(x.stars)}${'☆'.repeat(4 - x.stars)}</span>
+      <div class="mono" style="font-size:10px;color:var(--ink-3)">${hm(new Date(x.start), tz)}–${hm(new Date(x.end), tz)}</div></div>
+      <div><span class="k2">H</span>${cell(x.high, x.highState)}</div><div><span class="k2">L</span>${cell(x.low, x.lowState)}</div>
+      <div class="fa" style="grid-column:1/-1;margin:0">${esc(x.hunterFa)}</div></div>`).join('')}
+    <p class="fa" style="color:var(--ink-3);margin:4px 0 0">«شکار شد و برگشت» (Sweep): قیمت سطح را زد ولی دوباره به داخل برگشت؛ اغلب نشانه‌ی جمع‌کردن Stopها و برگشت. «شکسته شد»: قیمت بیرون سطح مانده؛ احتمال ادامه.</p></div>`;
+}
+
 function adrNote(p) {
   if (p == null) return '';
   if (p >= 100) return 'رنج امروز از میانگین روزانه گذشته؛ ادامه‌ی حرکت بزرگ کم‌احتمال‌تر است و ریسک برگشت بیشتر.';

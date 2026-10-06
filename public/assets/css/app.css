@@ -310,3 +310,10 @@ body.modal-open { overflow: hidden; }
 .perf-grid td { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .perf-grid td:not(:first-child), .perf-grid th:not(:first-child) { text-align: end; }
 @media (max-width: 1024px) { .perf-grid { grid-template-columns: 1fr; } }
+
+.stbl { margin-top: 14px; display: grid; gap: 8px; }
+.srow { display: grid; grid-template-columns: 130px minmax(0, 1fr) minmax(0, 1fr); gap: 6px 14px; padding: 8px 0; border-top: 1px solid var(--line); align-items: center; }
+.srow .stars { color: var(--warn); font-size: 11px; letter-spacing: 1px; }
+.srow .k2 { font: 700 10px var(--mono); color: var(--ink-3); margin-inline-end: 6px; }
+.slv { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 640px) { .srow { grid-template-columns: 1fr 1fr; } .srow > div:first-child { grid-column: 1 / -1; } }

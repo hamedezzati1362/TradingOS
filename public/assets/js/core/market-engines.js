@@ -1,3 +1,4 @@
+import { sessionWindows } from '../engines/session-engine.js';
 import { zoneOffsetMinutes } from '../engines/time-engine.js';
 // Market engines (Phase 6/8 core): pure functions on OHLC candles [{t, o, h, l, c}] oldest -> newest.
 // Used by the data collector (Node) and unit tests. No signals: only descriptions of state.
@@ -160,7 +161,11 @@ export function keyLevels(m15, daily, opts = {}) {
     add('PIVOT', P); add('R1', 2 * P - prev.l); add('S1', 2 * P - prev.h); add('R2', P + (prev.h - prev.l)); add('S2', P - (prev.h - prev.l));
   }
   if (today) { add('DAY OPEN', today.o); add('DAY HIGH', today.h); add('DAY LOW', today.l); }
-  if (asia) { add('ASIA HIGH', asia.h); add('ASIA LOW', asia.l); }
+  let sess = null;
+  if (opts.sessions) {
+    sess = sessionLevels(m15, opts.sessions, opts.now);
+    for (const x of sess) if (x.stars >= 3) { add(`${x.label} HIGH`, x.high); add(`${x.label} LOW`, x.low); }
+  } else if (asia) { add('ASIA HIGH', asia.h); add('ASIA LOW', asia.l); }
   if (week) { add('WEEK HIGH', week.h); add('WEEK LOW', week.l); }
   if (prevWeek) { add('PWH', prevWeek.h); add('PWL', prevWeek.l); }
   levels.sort((a, b) => b.price - a.price);
@@ -171,5 +176,43 @@ export function keyLevels(m15, daily, opts = {}) {
     price, levels, above, below,
     adr, todayRange, adrPct: adr && todayRange != null ? Math.round((todayRange / adr) * 100) : null,
     asia: asia ? { h: asia.h, l: asia.l } : null,
+    sessions: sess,
   };
+}
+
+/* ---------------- Session highs/lows (Phase 10b) ---------------- */
+
+export const SESSION_LEVEL_META = {
+  sydney: { label: 'SYDNEY', stars: 1, hunterFa: 'اهمیت کم؛ معمولاً داخل رنج آسیا/توکیو جذب می‌شود.' },
+  tokyo: { label: 'ASIA', stars: 3, hunterFa: 'معمولاً در باز شدن لندن شکار می‌شود؛ شکار و برگشت آن اغلب جهت حرکت اصلی روز را نشان می‌دهد.' },
+  london: { label: 'LONDON', stars: 4, hunterFa: 'هدف معمول سشن نیویورک، به‌خصوص هنگام انتشار خبرهای آمریکا.' },
+  newyork: { label: 'NY', stars: 3, hunterFa: 'مرجع سشن آسیای روز بعد؛ گاهی در لندن روز بعد شکار می‌شود.' },
+};
+
+/** For each session: the most recent window that has started, its high/low, and what happened to them afterwards. */
+export function sessionLevels(m15, sessions, now = m15[m15.length - 1].t + 900000) {
+  const price = m15[m15.length - 1].c;
+  const out = [];
+  for (const s of sessions) {
+    const meta = SESSION_LEVEL_META[s.id]; if (!meta) continue;
+    const wins = sessionWindows(s, new Date(now), -3, 0).filter((w) => w.start.getTime() <= now).sort((a, b) => a.start - b.start);
+    for (let k = wins.length - 1; k >= 0; k--) {
+      const a = wins[k].start.getTime(), b = wins[k].end.getTime();
+      const bars = m15.filter((x) => x.t >= a && x.t < b);
+      if (bars.length < 4) continue;                    // weekend / no data in this window: try the previous one
+      const hi = Math.max(...bars.map((x) => x.h)), lo = Math.min(...bars.map((x) => x.l));
+      const forming = now < b;
+      const after = m15.filter((x) => x.t >= b);
+      const state = (lvl, up) => {
+        if (forming) return { state: 'FORMING' };
+        const hit = after.find((x) => (up ? x.h > lvl : x.l < lvl));
+        if (!hit) return { state: 'INTACT' };
+        const back = up ? price < lvl : price > lvl;
+        return { state: back ? 'SWEPT' : 'BROKEN', at: hit.t };
+      };
+      out.push({ id: s.id, ...meta, start: a, end: b, forming, high: hi, low: lo, highState: state(hi, true), lowState: state(lo, false) });
+      break;
+    }
+  }
+  return out;
 }

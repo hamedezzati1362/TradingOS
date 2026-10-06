@@ -69,3 +69,30 @@ test('key levels: PDH/PDL from previous broker day, pivots, ADR%', () => {
   assert.equal(L.adr, 10); assert.equal(L.todayRange, 4); assert.equal(L.adrPct, 40);
   assert.ok(L.above.price > L.price && L.below.price < L.price);
 });
+import { sessionLevels } from '../public/assets/js/core/market-engines.js';
+import { CONFIG } from '../public/assets/js/config.js';
+test('session levels: London high swept then price back inside -> SWEPT; Asia low broken -> BROKEN', () => {
+  // Wed 2026-10-07, London 07:00-16:00 UTC (BST), Tokyo 00:00-09:00 UTC
+  const t0 = Date.UTC(2026, 9, 7, 0, 0), bars = [];
+  for (let i = 0; i < 80; i++) {
+    const t = t0 + i * M15, hUTC = i / 4;
+    let c = 100;
+    if (hUTC >= 7 && hUTC < 16) c = 101 + (hUTC === 12 ? 1 : 0);        // London range 100.5..102.5 (spike at 12:00)
+    if (hUTC >= 16 && hUTC < 17) c = 103;                               // NY pushes above London high
+    if (hUTC >= 17) c = 101.5;                                          // ...and comes back inside
+    if (hUTC >= 9 && hUTC < 10) c = 98;                                 // dips below Asia low after Tokyo close
+    bars.push({ t, o: c, h: c + 0.5, l: c - 0.5, c });
+  }
+  const now = t0 + 80 * M15;
+  const L = Object.fromEntries(sessionLevels(bars, CONFIG.sessions, now).map((x) => [x.id, x]));
+  assert.equal(L.london.highState.state, 'SWEPT');
+  assert.equal(L.tokyo.lowState.state, 'SWEPT');     // dipped below Asia low, then came back inside
+  assert.equal(L.newyork.forming, true);
+  assert.equal(L.london.stars, 4);
+});
+test('session levels: price stays beyond London low -> BROKEN; untouched high -> INTACT', () => {
+  const t0 = Date.UTC(2026, 9, 7, 7, 0), bars = [];
+  for (let i = 0; i < 48; i++) { const c = i < 36 ? 101 : 99; bars.push({ t: t0 + i * M15, o: c, h: c + 0.5, l: c - 0.5, c }); }
+  const L = Object.fromEntries(sessionLevels(bars, CONFIG.sessions, t0 + 48 * M15).map((x) => [x.id, x]));
+  assert.equal(L.london.lowState.state, 'BROKEN'); assert.equal(L.london.highState.state, 'INTACT');
+});

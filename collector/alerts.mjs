@@ -19,6 +19,23 @@ export function buildAlerts({ calendar, assets, now = Date.now(), sent = {}, lea
   if (g && g.price != null && wd >= 1 && wd <= 5 && hm >= briefAt[0] && hm <= briefAt[1] && !sent[`brief:${today}`]) {
     out.push({ id: `brief:${today}`, text: morningBrief({ g, calendar, now, today, condition: condition.XAUUSD, macro }) });
   }
+  // 4) Gold sweeps / breaks a completed session high or low (Asia, London, NY), once per level per session.
+  if (g && g.levels && g.levels.sessions) {
+    for (const x of g.levels.sessions.filter((y) => y.stars >= 3 && !y.forming)) {
+      for (const [side, st, lvl] of [['HIGH', x.highState, x.high], ['LOW', x.lowState, x.low]]) {
+        if (!st || !st.at || now - st.at > 50 * 60000) continue;           // only fresh events
+        const id = `sess:${x.id}:${x.start}:${side}`;
+        if (sent[id]) continue;
+        const nameFa = { ASIA: 'آسیا', LONDON: 'لندن', NY: 'نیویورک' }[x.label] || x.label;
+        const sideFa = side === 'HIGH' ? 'سقف' : 'کف';
+        const what = st.state === 'SWEPT'
+          ? `قیمت ${sideFa} ${nameFa} را زد و برگشت (Sweep) — نشانه‌ی احتمالی شکار نقدینگی و برگشت به ${side === 'HIGH' ? 'پایین' : 'بالا'}.`
+          : `قیمت ${sideFa} ${nameFa} را شکست و بیرون مانده (Break) — احتمال ادامه‌ی حرکت به ${side === 'HIGH' ? 'بالا' : 'پایین'}، تا وقتی دوباره به داخل رنج برنگردد.`;
+        out.push({ id, text: [`🧲 طلا · ${sideFa} سشن ${nameFa} (${lvl.toFixed(2)}) ${'★'.repeat(x.stars)}`, what,
+          `قیمت فعلی: ${g.price.toFixed(2)} | زمان برخورد: ${IR.format(new Date(st.at))} تهران`, x.hunterFa, 'TradingOS · اطلاع‌رسانی، نه توصیه‌ی معامله'].join('\n') });
+      }
+    }
+  }
   // 3) Gold touches a key level on the latest closed 15m bars (once per level per broker day).
   if (g && g.levels && lastBars.XAUUSD) {
     const watch = new Set(['PDH', 'PDL', 'WEEK HIGH', 'WEEK LOW', 'PWH', 'PWL']);

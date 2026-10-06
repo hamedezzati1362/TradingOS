@@ -14,7 +14,7 @@ for (const [w, h] of [[390, 844], [768, 1024], [1920, 1080]]) {
     await page.goto(url, { waitUntil: 'networkidle' }).catch(() => page.goto(url));
     await page.waitForTimeout(1200);
     const ov = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    const panels = await page.evaluate(() => [...document.querySelectorAll('.pill.down')].length);
+    const panels = await page.evaluate(() => [...document.querySelectorAll('[data-panel-error]')].length);
     const ok = ov <= 0 && !errs.filter((e) => !/fonts\.(googleapis|gstatic)/.test(e)).length && !panels;
     if (!ok) failed++;
     console.log(`${ok ? 'PASS' : 'FAIL'} ${w}px ${lang}: overflow=${ov} errors=${JSON.stringify(errs)} panelErrors=${panels}`);
