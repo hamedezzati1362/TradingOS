@@ -1,0 +1,31 @@
+name: Ticker (reliable 15-min scheduler)
+# GitHub throttles frequent `schedule` triggers on new repos (runs arrive hours apart).
+# This job dispatches the data workflow every 15 minutes for ~5h45m, then re-dispatches itself.
+# The cron below is only a safety net that restarts the chain if it ever stops.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 */2 * * *'
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: ticker
+  cancel-in-progress: false
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Dispatch data workflow every 15 minutes
+        run: |
+          for i in $(seq 1 23); do
+            gh workflow run pages.yml --ref main -f alert_test=0 || echo "dispatch failed (will retry next tick)"
+            sleep 900
+          done
+      - name: Hand over to the next ticker
+        if: always()
+        run: gh workflow run ticker.yml --ref main || echo "self-dispatch failed; safety-net cron will restart"
